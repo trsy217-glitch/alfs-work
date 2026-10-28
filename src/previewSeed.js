@@ -45,7 +45,7 @@ const agentRuns = [
   { id: 'r5', agent: 'marketing', title: '초안 2건', at: iso(-1), output: '블로그 1 · 인스타 1 (금지 표현 1개 표시)', engine: 'Gemini Flash-Lite' },
 ]
 const store = { members, leads, logs: { b: [{ id: 'l1', type: 'meet', by: 'u3', at: iso(-1), count: 2, text: '회원 대상 시음 이벤트로 시작하고 싶어 함. 가격 부담 질문.', nextLabel: '다시 미팅', apptAt: `${D(1)}T11:00` }, { id: 'l2', type: 'prep', by: 'agent', agent: 'sales', at: iso(0, -5), text: '다음 미팅 준비 메모를 만들었어요' }] }, invites: {}, activity, events, expenses, receipts: {}, contents, agentRuns, settings: {} }
-const session = { id: 'u1', email: 'aamarketing250611@gmail.com', name: '이소영' }
+const session = { id: 'u1', email: 'trsy217@gmail.com', name: '이소영' }
 
 // 미리보기 빌드에서만: 처음 열면 예시 데이터를 넣고 '대표 이소영'으로 바로 들어갑니다
 export function seedPreview() {

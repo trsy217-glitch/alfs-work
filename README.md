@@ -80,7 +80,7 @@ Actions 탭에서 `alfs-cron` → Run workflow 로 바로 한 번 돌려 볼 수
 - 한 번 로그인하면 다음부터 바로 열립니다.
 
 ### 9. 팀원 등록
-대표 계정(aamarketing250611@gmail.com)으로 먼저 로그인 → 팀·설정 → 팀원 등록에 이름·Google 이메일·역할(PM·영업·샵관리)을 넣습니다.
+대표 계정(trsy217@gmail.com)으로 먼저 로그인 → 팀·설정 → 팀원 등록에 이름·Google 이메일·역할(TM·영업·샵관리)을 넣습니다.
 
 ## 비용 (월, 직원 4명 기준 예상)
 - AI: 월 600회 안팎 → Haiku + Gemini Flash-Lite 로 약 1~2만 원 이하

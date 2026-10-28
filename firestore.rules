@@ -8,7 +8,7 @@ service cloud.firestore {
     // 대표 Google 계정 (src/config.js 의 ADMIN_EMAILS 와 같게)
     function isOwnerEmail() {
       return request.auth != null && request.auth.token.email_verified == true
-        && request.auth.token.email in ['aamarketing250611@gmail.com'];
+        && request.auth.token.email in ['trsy217@gmail.com'];
     }
     function signedIn() { return request.auth != null; }
     function me() { return /databases/$(database)/documents/members/$(request.auth.uid); }
