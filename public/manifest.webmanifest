@@ -1,0 +1,23 @@
+{
+  "id": "/",
+  "name": "알프스 워크",
+  "short_name": "알프스 워크",
+  "description": "알프스 팀 업무 플랫폼 — 고객·일정·비용·마케팅을 AI 에이전트와 함께",
+  "start_url": "/#hq",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#13274A",
+  "theme_color": "#13274A",
+  "lang": "ko",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "대표실 · 오늘", "url": "/#ceo", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "영수증 올리기", "url": "/#finance", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "고객", "url": "/#sales", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

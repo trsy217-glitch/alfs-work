@@ -1,0 +1,103 @@
+rules_version = '2';
+// 알프스 워크 — Firestore 보안 규칙
+// Firebase 콘솔 → Firestore Database → 규칙 탭에 이 내용을 통째로 붙여 넣고 '게시'하세요.
+// 서버(에이전트·텔레그램·예약 작업)는 서비스 계정으로 쓰기 때문에 이 규칙을 거치지 않습니다.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 대표 Google 계정 (src/config.js 의 ADMIN_EMAILS 와 같게)
+    function isOwnerEmail() {
+      return request.auth != null && request.auth.token.email_verified == true
+        && request.auth.token.email in ['aamarketing250611@gmail.com'];
+    }
+    function signedIn() { return request.auth != null; }
+    function me() { return /databases/$(database)/documents/members/$(request.auth.uid); }
+    function myRole() { return exists(me()) ? get(me()).data.role : 'none'; }
+    function isAdmin() { return isOwnerEmail() || (signedIn() && myRole() == 'admin'); }
+    function isMember() { return isOwnerEmail() || (signedIn() && myRole() in ['admin', 'tm', 'sales', 'manager']); }
+    function isSelf(uid) { return signedIn() && request.auth.uid == uid; }
+    function myEmail() { return signedIn() ? request.auth.token.email.lower() : ''; }
+    function invited() { return exists(/databases/$(database)/documents/invites/$(myEmail())); }
+    function approvalLimit() {
+      return exists(/databases/$(database)/documents/settings/main)
+        ? get(/databases/$(database)/documents/settings/main).data.get('approvalLimit', 20000) : 20000;
+    }
+
+    // 팀원: 팀원 누구나 사람을 등록하고 역할을 정함 (대표 요청)
+    match /members/{uid} {
+      allow read: if isMember() || isSelf(uid);
+      allow create: if isSelf(uid) && (
+        request.resource.data.role == 'pending'
+        || (request.resource.data.role == 'admin' && isOwnerEmail())
+        || (invited() && get(/databases/$(database)/documents/invites/$(myEmail())).data.role == request.resource.data.role)
+      );
+      allow update: if isMember() || (isSelf(uid) && request.resource.data.role == resource.data.role);
+      allow delete: if isMember();
+    }
+    match /invites/{email} {
+      allow read: if isMember() || (signedIn() && myEmail() == email);
+      allow create, update: if isMember() && request.resource.data.role in ['admin', 'tm', 'sales', 'manager'];
+      allow delete: if isMember() || (signedIn() && myEmail() == email);
+    }
+
+    // 고객 카드: 팀원 모두가 보고 기록. 삭제는 대표만
+    match /leads/{id} {
+      allow read, create, update: if isMember();
+      allow delete: if isAdmin();
+      match /logs/{logId} {
+        allow read: if isMember();
+        allow create: if isMember() && request.resource.data.by == request.auth.uid;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+    // 모든 기록의 사본 (팀 소식·리포트)
+    match /activity/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.by == request.auth.uid;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+    // 일정
+    match /events/{id} {
+      allow read, create, update: if isMember();
+      allow delete: if isMember();
+    }
+
+    // 비용: 본인 것만 보고 올림. 승인 기준 미만만 '승인'으로 올릴 수 있고, 상태 변경은 대표만
+    match /expenses/{id} {
+      allow read: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin() || (isMember() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.amount is number && request.resource.data.amount > 0
+        && (request.resource.data.status == 'pending'
+            || (request.resource.data.status == 'approved' && request.resource.data.amount < approvalLimit())));
+      allow update: if isAdmin();
+      allow delete: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid && resource.data.status == 'pending');
+    }
+    match /receipts/{id} {
+      allow read: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin() || (isMember() && request.resource.data.uid == request.auth.uid);
+      allow update: if false;
+      allow delete: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid);
+    }
+
+    // 마케팅 글
+    match /contents/{id} {
+      allow read, create, update: if isMember();
+      allow delete: if isAdmin() || (isMember() && resource.data.by == request.auth.uid);
+    }
+    // 에이전트 기록·설정
+    match /agentRuns/{id} { allow read: if isMember(); allow write: if false; }
+    match /settings/{id} { allow read: if isMember(); allow write: if isAdmin(); }
+
+    // 이전 '일괄 정산 앱' 데이터 (가져오기용, 대표만 읽기)
+    match /claims/{uid} {
+      allow read: if isAdmin() || isSelf(uid);
+      match /{sub=**} { allow read: if isAdmin() || isSelf(uid); }
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
