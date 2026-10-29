@@ -1,6 +1,6 @@
 {
   "rewrites": [
-    { "source": "/__/auth/:path*", "destination": "https://YOUR-FIREBASE-PROJECT-ID.firebaseapp.com/__/auth/:path*" },
+    { "source": "/__/auth/:path*", "destination": "https://alfs-work.firebaseapp.com/__/auth/:path*" },
     { "source": "/((?!api/|__/).*)", "destination": "/index.html" }
   ],
   "headers": [
