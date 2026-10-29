@@ -8,8 +8,8 @@ import { readReceipt, prepFor, draftContent, notifyBooking, notifyAck, notifyCon
 export default async function handler(req, res) {
   if (req.method !== 'POST') { res.setHeader('Allow', 'POST'); return res.status(405).json({ error: 'POST만 받습니다.' }) }
   if (!adminReady()) return res.status(501).json({ error: '서버 설정(FIREBASE_SERVICE_ACCOUNT)이 아직 없어요. README의 연결 순서를 따라 주세요.' })
-  const who = await verifyUser(req).catch(() => null)
-  if (!who) return res.status(401).json({ error: '로그인이 필요해요.' })
+  const who = await verifyUser(req).catch((e) => ({ fail: `로그인 확인 중 오류: ${String(e?.message || e).slice(0, 120)}` }))
+  if (!who?.uid) return res.status(401).json({ error: who?.fail || '로그인이 필요해요.' })
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
   const settings = await getSettings()
   const off = (k) => !agentOn(settings, k) && res.status(409).json({ error: '대표가 이 에이전트를 꺼 두었어요.' })

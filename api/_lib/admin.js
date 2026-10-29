@@ -20,17 +20,25 @@ export { FieldValue }
 export const inc = (v) => (globalThis.__ALFS_FAKE_DB ? { __inc: v } : FieldValue.increment(v))
 export const iso = () => new Date().toISOString()
 
-/** 앱에서 온 요청의 로그인 확인 → { uid, member } */
+/** 앱에서 온 요청의 로그인 확인 → { uid, member } · 실패하면 { fail: 이유 } */
 export async function verifyUser(req) {
   const h = String(req.headers.authorization || '')
   const token = h.startsWith('Bearer ') ? h.slice(7) : ''
-  if (!token) return null
-  db()
+  if (!token || token === 'undefined') return { fail: '앱에 로그인 정보가 없어요. 로그아웃했다가 다시 로그인해 주세요.' }
+  try { db() } catch (e) {
+    return { fail: `서버 열쇠(FIREBASE_SERVICE_ACCOUNT)를 읽지 못했어요. Vercel 환경변수에 서비스 계정 .json 파일 내용 전체({ 부터 } 까지)가 들어갔는지 확인하고 Redeploy 해 주세요. (${String(e.message || e).slice(0, 80)})` }
+  }
   const verify = globalThis.__ALFS_FAKE_AUTH || ((t) => getAuth().verifyIdToken(t)) // 테스트용 가짜 로그인
-  const dec = await verify(token).catch(() => null)
-  if (!dec) return null
+  let dec = null, why = ''
+  try { dec = await verify(token) } catch (e) { why = String(e.message || e) }
+  if (!dec) {
+    if (/aud|audience|project/i.test(why)) return { fail: '서버 열쇠가 다른 Firebase 프로젝트 것이에요. Firebase alfs-work 프로젝트 → 서비스 계정에서 새 키를 받아 FIREBASE_SERVICE_ACCOUNT 를 바꾸고 Redeploy 해 주세요.' }
+    if (/expired/i.test(why)) return { fail: '로그인이 만료됐어요. 화면을 새로고침해 주세요.' }
+    return { fail: `로그인 확인에 실패했어요. (${why.slice(0, 120)})` }
+  }
   const m = await db().collection('members').doc(dec.uid).get()
-  if (!m.exists || m.data().role === 'pending') return null
+  if (!m.exists) return { fail: '팀원 등록 정보가 없어요. 설정에서 팀원 등록이 됐는지 확인해 주세요.' }
+  if (m.data().role === 'pending') return { fail: '아직 역할이 정해지지 않았어요. 대표가 설정에서 역할을 정하면 쓸 수 있어요.' }
   return { uid: dec.uid, member: { id: dec.uid, ...m.data() } }
 }
 
