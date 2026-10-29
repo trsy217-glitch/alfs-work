@@ -60,9 +60,10 @@ export function AuthProvider({ children }) {
       }
       const provider = new GoogleAuthProvider()
       provider.setCustomParameters({ prompt: 'select_account' })
-      // 홈 화면에 설치한 앱에서는 팝업이 다른 창으로 열려 돌아오지 못해 페이지 이동 방식으로
+      // 아이폰 홈 화면 앱만 페이지 이동 방식 (안드로이드 설치 앱은 이동 방식이 크롬 탭으로 빠져 로그인 정보를 잃음 → 팝업)
       const standalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true
-      if (standalone) { await signInWithRedirect(auth, provider); return { ok: true } }
+      const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+      if (standalone && ios) { await signInWithRedirect(auth, provider); return { ok: true } }
       try {
         await signInWithPopup(auth, provider)
         return { ok: true }
