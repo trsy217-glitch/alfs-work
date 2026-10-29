@@ -25,6 +25,8 @@ export async function verifyUser(req) {
   const h = String(req.headers.authorization || '')
   const token = h.startsWith('Bearer ') ? h.slice(7) : ''
   if (!token || token === 'undefined') return { fail: '앱에 로그인 정보가 없어요. 로그아웃했다가 다시 로그인해 주세요.' }
+  const raw = String(process.env.FIREBASE_SERVICE_ACCOUNT || '').trim()
+  if (raw && !raw.startsWith('{') && /adminsdk|\.json|firebase/i.test(raw)) return { fail: `FIREBASE_SERVICE_ACCOUNT 에 파일 내용이 아니라 파일 이름("${raw.slice(0, 40)}…")이 들어갔어요. 파일을 메모장으로 열어 안의 글자 전체({ 부터 } 까지)를 붙여 넣고 Redeploy 해 주세요.` }
   try { db() } catch (e) {
     return { fail: `서버 열쇠(FIREBASE_SERVICE_ACCOUNT)를 읽지 못했어요. Vercel 환경변수에 서비스 계정 .json 파일 내용 전체({ 부터 } 까지)가 들어갔는지 확인하고 Redeploy 해 주세요. (${String(e.message || e).slice(0, 80)})` }
   }

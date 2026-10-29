@@ -7,6 +7,7 @@
 //   activity/{id}           모든 기록의 사본 (팀 소식·주간 리포트·대시보드용)
 //   events/{id}             고객 카드 밖 일정 (행사·세미나·기타)
 //   expenses/{id}           비용 { uid, date, month, amount, category, pay, memo, status, hasReceipt, via }
+//   drives/{id}             차량운행일지 { uid, date, month, car, from, to, purpose, client, startKm, endKm, km, memo }
 //   receipts/{id}           영수증 사진 { img } (작게 줄인 JPEG)
 //   contents/{id}           마케팅 글 { channel, title, body, date, status, by, byAgent }
 //   agentRuns/{id}          에이전트가 한 일 (서버만 씀)
@@ -27,7 +28,7 @@ export const demo = isDemoMode
 // ── 체험 모드 저장소 ──
 const KEY = 'alfs_work_demo_v2'
 const listeners = new Set()
-const seed = () => ({ leads: {}, logs: {}, members: {}, invites: {}, activity: [], events: {}, expenses: {}, receipts: {}, contents: {}, agentRuns: [], settings: {} })
+const seed = () => ({ leads: {}, logs: {}, members: {}, invites: {}, activity: [], events: {}, expenses: {}, drives: {}, receipts: {}, contents: {}, agentRuns: [], settings: {} })
 const load = () => ({ ...seed(), ...(ls.get(KEY) || {}) })
 const save = (s) => { ls.set(KEY, s); listeners.forEach((f) => f()) }
 const sub = (f) => { listeners.add(f); f(); return () => listeners.delete(f) }
@@ -209,6 +210,25 @@ export async function removeExpense(it) {
   await deleteDoc(doc(db, 'expenses', it.id))
   if (it.hasReceipt) await deleteDoc(doc(db, 'receipts', it.id)).catch(() => {})
 }
+// ── 차량운행일지 ──
+/** uid 를 주면 그 사람 것만, null 이면 전체(대표) */
+export function watchDrives(uid, cb) {
+  if (demo) return sub(() => cb(Object.values(load().drives || {}).filter((d) => !uid || d.uid === uid)))
+  const q = uid ? query(collection(db, 'drives'), where('uid', '==', uid), limit(1000)) : query(collection(db, 'drives'), orderBy('date', 'desc'), limit(2000))
+  return snap(q, cb)
+}
+export async function addDrive(user, item) {
+  const id = newId()
+  const row = { ...item, uid: user.id, createdAt: iso() }
+  if (demo) { const s = load(); (s.drives ||= {})[id] = { id, ...row }; save(s); return { id, ...row } }
+  await setDoc(doc(db, 'drives', id), row)
+  return { id, ...row }
+}
+export async function removeDrive(d) {
+  if (demo) { const s = load(); delete (s.drives || {})[d.id]; save(s); return }
+  await deleteDoc(doc(db, 'drives', d.id))
+}
+
 export async function getReceipt(it) {
   if (demo) return load().receipts[it.id] || null
   const s = await getDoc(doc(db, 'receipts', it.id))

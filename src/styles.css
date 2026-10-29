@@ -42,6 +42,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
+#root { height: 100%; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.55; word-break: keep-all; -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -73,7 +74,7 @@ h1, h2, h3 { text-wrap: balance; letter-spacing: -.01em; }
 .brand small { font-weight: 500; color: var(--ink2); font-size: 12.5px; letter-spacing: 0; }
 
 /* ── 머리줄 (항상 보임) ── */
-.shell { height: 100%; display: grid; grid-template-rows: auto 1fr; grid-template-columns: minmax(0, 1fr); }
+.shell { height: 100%; height: 100dvh; display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr); }
 .shell > * { min-width: 0; }
 .hdr { position: sticky; top: 0; z-index: 40; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line); padding-top: env(safe-area-inset-top, 0px); }
 .hdr-row { height: 50px; display: flex; align-items: center; gap: 10px; padding: 0 max(14px, env(safe-area-inset-right, 0px)) 0 max(10px, env(safe-area-inset-left, 0px)); max-width: 1240px; margin: 0 auto; }
@@ -92,7 +93,7 @@ h1, h2, h3 { text-wrap: balance; letter-spacing: -.01em; }
 .hdr-tabs button[aria-current="page"]::after { content: ""; position: absolute; left: 10px; right: 10px; bottom: 0; height: 2px; border-radius: 2px; background: var(--blue); }
 .badge { font-style: normal; display: inline-grid; place-items: center; min-width: 17px; height: 17px; font-size: 10.5px; font-weight: 700; border-radius: 999px; background: var(--bad); color: #fff; padding: 0 5px; font-family: var(--mono); }
 
-.screen { overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.screen { min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
 .screen-in { max-width: 1240px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right, 0px)) calc(110px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
 .screen-in > * { min-width: 0; }
 @media (min-width: 900px) { .screen-in { padding-top: 22px; padding-left: 28px; padding-right: 28px; } }
@@ -409,6 +410,8 @@ textarea.inp { resize: vertical; }
 .st-paid { background: var(--b-soft); color: var(--b); }
 .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25; display: grid; justify-items: center; gap: 3px; padding: 14px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); background: linear-gradient(180deg, transparent, var(--bg) 38%); pointer-events: none; }
 .dock > * { pointer-events: auto; }
+.dock-row { display: flex; gap: 8px; width: 100%; max-width: 420px; }
+.dock-row .dock-btn { flex: 1 1 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .dock-btn { max-width: 380px; cursor: pointer; position: relative; }
 .dock-btn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .dock-btn:focus-within { outline: 2px solid var(--blue); outline-offset: 2px; }

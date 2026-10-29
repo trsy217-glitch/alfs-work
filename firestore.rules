@@ -74,6 +74,14 @@ service cloud.firestore {
       allow update: if isAdmin();
       allow delete: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid && resource.data.status == 'pending');
     }
+    // 차량운행일지: 본인 것만 보고 쓰고, 대표는 전체
+    match /drives/{id} {
+      allow read: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin() || (isMember() && request.resource.data.uid == request.auth.uid
+        && request.resource.data.km is number && request.resource.data.km >= 0 && request.resource.data.km < 3000);
+      allow update: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid);
+      allow delete: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid);
+    }
     match /receipts/{id} {
       allow read: if isAdmin() || (isMember() && resource.data.uid == request.auth.uid);
       allow create: if isAdmin() || (isMember() && request.resource.data.uid == request.auth.uid);

@@ -3,6 +3,7 @@ import { addExpense, callAgent, getReceipt, readReceipt, removeExpense, setExpen
 import { EXP_CATS, EXP_CAT, EXP_STATUS } from '../../shared/constants.js'
 import { shiftMonth, todayStr, won } from '../../shared/time.js'
 import { Chips, Empty, Group, Icon, Sheet, moneyInput, parseMoney } from '../ui.jsx'
+import Drives from './Drives.jsx'
 
 const CAT_COLOR = ['var(--c1)', 'var(--c2)', 'var(--c3)', 'var(--c4)', 'var(--c5)', 'var(--c6)', 'var(--c7)', 'var(--c8)', 'var(--c9)', 'var(--c10)']
 
@@ -36,8 +37,22 @@ async function compress(file) {
   } finally { URL.revokeObjectURL(url) }
 }
 
+/* 정산 — 비용 / 차량운행일지 */
+export default function Finance({ ctx }) {
+  const [view, setView] = useState('cost')
+  return (
+    <div className="stack">
+      <div className="seg seg-2 seg-top">
+        <button type="button" aria-pressed={view === 'cost'} onClick={() => setView('cost')}>비용·영수증</button>
+        <button type="button" aria-pressed={view === 'drive'} onClick={() => setView('drive')}>차량운행일지</button>
+      </div>
+      {view === 'cost' ? <Expenses ctx={ctx} /> : <Drives ctx={ctx} />}
+    </div>
+  )
+}
+
 /* 비용 — 영수증 찍어 올리기, 2만원 이상은 대표 승인 */
-export default function Expenses({ ctx }) {
+function Expenses({ ctx }) {
   const { user, isAdmin, data } = ctx
   const limit = ctx.settings.approvalLimit
   const [month, setMonth] = useState(todayStr().slice(0, 7))
@@ -71,6 +86,11 @@ export default function Expenses({ ctx }) {
     document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000)
   }
 
+  const onPhoto = async (e) => {
+    const f = e.target.files?.[0]; e.target.value = ''
+    if (!f) return
+    try { setAdding({ img: await compress(f) }) } catch { ctx.say('사진을 열 수 없어요. 다른 사진으로 올려 주세요.') }
+  }
   const s = sums(list)
   return (
     <div className="stack">
@@ -118,13 +138,14 @@ export default function Expenses({ ctx }) {
       </div>
 
       <div className="dock">
-        <label htmlFor="xpFile" className="btn-primary dock-btn"><Icon k="expenses" /> 영수증 사진 올리기
-          <input type="file" id="xpFile" accept="image/*" onChange={async (e) => {
-            const f = e.target.files?.[0]; e.target.value = ''
-            if (!f) return
-            try { setAdding({ img: await compress(f) }) } catch { ctx.say('사진을 열 수 없어요. 다른 사진으로 올려 주세요.') }
-          }} />
-        </label>
+        <div className="dock-row">
+          <label htmlFor="xpCam" className="btn-primary dock-btn"><Icon k="expenses" /> 바로 촬영
+            <input type="file" id="xpCam" accept="image/*" capture="environment" onChange={onPhoto} />
+          </label>
+          <label htmlFor="xpFile" className="btn-ghost dock-btn">사진 올리기
+            <input type="file" id="xpFile" accept="image/*" onChange={onPhoto} />
+          </label>
+        </div>
         <button type="button" className="link small" onClick={() => setAdding({})}>영수증 없이 입력</button>
       </div>
 
