@@ -4,7 +4,7 @@
 //   음성 메모 받아쓰기 → Gemini (Claude 는 음성을 받지 않음)
 //   마케팅 초안·유튜브 분석·SNS 콘텐츠 → Gemini 만
 const CLAUDE_MODEL = () => process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5'
-const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite'
+const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-3.5-flash-lite' // 2.5 계열은 신규 사용자에게 닫힘 (2026-11)
 export const hasClaude = () => Boolean(process.env.ANTHROPIC_API_KEY)
 export const hasGemini = () => Boolean(process.env.GEMINI_API_KEY)
 export const hasAI = () => hasClaude() || hasGemini()
@@ -44,8 +44,8 @@ async function claude({ system, text, image, maxTokens = 800 }) {
   return (j.content || []).filter((c) => c.type === 'text').map((c) => c.text).join('').trim()
 }
 
-// 유튜브 영상을 직접 보는 분석은 Flash 계열 (Flash-Lite 보다 영상 이해가 낫고, 실패하면 Flash-Lite 로)
-const VIDEO_MODEL = () => process.env.GEMINI_VIDEO_MODEL || 'gemini-2.5-flash'
+// 유튜브 영상을 직접 보는 분석 모델 (GEMINI_VIDEO_MODEL 로 바꿀 수 있음, 실패하면 기본 모델로)
+const VIDEO_MODEL = () => process.env.GEMINI_VIDEO_MODEL || 'gemini-3.5-flash-lite'
 
 async function gemini({ system, text, image, audio, video, maxTokens = 800, json, temperature = 0.4 }) {
   if (video) {
@@ -58,6 +58,7 @@ async function gemini({ system, text, image, audio, video, maxTokens = 800, json
 }
 
 async function geminiCall(model, { system, text, image, audio, video, maxTokens, json, temperature }) {
+  const g3 = /^gemini-[3-9]/.test(model)
   const parts = []
   // 유튜브 공개 영상은 주소만 넘기면 Gemini 가 직접 봅니다. 길면 앞 12분만, 저해상도로 (응답 시간·비용)
   if (video) parts.push({ fileData: { fileUri: video }, videoMetadata: { startOffset: '0s', endOffset: '720s' } })
@@ -70,7 +71,8 @@ async function geminiCall(model, { system, text, image, audio, video, maxTokens,
     body: JSON.stringify({
       ...(system ? { systemInstruction: { parts: [{ text: system }] } } : {}),
       contents: [{ role: 'user', parts }],
-      generationConfig: { maxOutputTokens: maxTokens, temperature, ...(json ? { responseMimeType: 'application/json' } : {}), ...(video ? { mediaResolution: 'MEDIA_RESOLUTION_LOW' } : {}) },
+      // Gemini 3 계열: 생각(thinking) 토큰도 출력 한도에 들어가므로 여유를 더 주고, temperature 는 기본값(1.0) 그대로 둡니다
+      generationConfig: { maxOutputTokens: g3 ? maxTokens + 6000 : maxTokens, ...(g3 ? {} : { temperature }), ...(json ? { responseMimeType: 'application/json' } : {}), ...(video ? { mediaResolution: 'MEDIA_RESOLUTION_LOW' } : {}) },
     }),
   })
   if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 200)}`)
