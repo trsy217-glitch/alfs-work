@@ -2,7 +2,7 @@
 //   analyze · plan-meta · plan-scenes · plan-prompts · channel · handles · omni
 // 결과 저장은 화면(Firestore 'yt' 모음)이 합니다. 여기서는 만들기만.
 import { adminReady, verifyUser, logRun } from './_lib/admin.js'
-import { hasAI } from './_lib/ai.js'
+import { hasGemini } from './_lib/ai.js'
 import { analyze, planMeta, planScenes, planPrompts, channel, checkHandles, omni } from './_lib/yt.js'
 
 const s = (v, n = 400) => String(v ?? '').slice(0, n)
@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   if (!adminReady()) return res.status(501).json({ error: '서버 설정(FIREBASE_SERVICE_ACCOUNT)이 아직 없어요.' })
   const who = await verifyUser(req).catch((e) => ({ fail: String(e?.message || e) }))
   if (!who?.uid) return res.status(401).json({ error: who?.fail || '로그인이 필요해요.' })
-  if (!hasAI()) return res.status(501).json({ error: 'AI 키(ANTHROPIC_API_KEY 또는 GEMINI_API_KEY)가 아직 없어요.' })
+  if (!hasGemini()) return res.status(501).json({ error: '마케팅 스튜디오는 Gemini로 돌아가요. Vercel 환경변수에 GEMINI_API_KEY를 넣고 Redeploy 해 주세요.' })
   const b = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {}
   const name = who.member.name
   try {
@@ -47,8 +47,8 @@ export default async function handler(req, res) {
         return res.json({ handles: await checkHandles(list) })
       }
       case 'omni': {
-        const r = await omni({ topic: s(b.topic, 200), context: s(b.context, 4000), audience: s(b.audience, 200), count: b.count, platform: b.platform === 'twitter' ? 'twitter' : 'threads' })
-        await logRun('marketing', `원소스 마케팅 · ${s(b.topic, 60)}`, `${name} 요청 · 스레드·블로그·뉴스레터${r.adIssues?.length ? ` · 고칠 표현 ${r.adIssues.map((i) => i.word).join(', ')}` : ''}`, { engine: r.engine, by: who.uid })
+        const r = await omni({ topic: s(b.topic, 200), context: s(b.context, 4000), audience: s(b.audience, 200), count: b.count, channels: Array.isArray(b.channels) ? b.channels.map(String) : undefined })
+        await logRun('marketing', `원소스 마케팅 · ${s(b.topic, 60)}`, `${name} 요청 · ${(r.channels || []).join('·')}${r.adIssues?.length ? ` · 고칠 표현 ${r.adIssues.map((i) => i.word).join(', ')}` : ''}`, { engine: r.engine, by: who.uid })
         return res.json(r)
       }
       default:

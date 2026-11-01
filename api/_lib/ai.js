@@ -2,14 +2,15 @@
 // 일마다 먼저 쓸 엔진을 정하고, 실패하거나 키가 없으면 다른 엔진으로 넘어갑니다.
 //   영수증 읽기·고객 메모 정리·미팅 준비 → Claude Haiku 먼저
 //   음성 메모 받아쓰기 → Gemini (Claude 는 음성을 받지 않음)
-//   마케팅 초안 (고객 정보 없음) → Gemini Flash-Lite 먼저
+//   마케팅 초안·유튜브 분석·SNS 콘텐츠 → Gemini 만
 const CLAUDE_MODEL = () => process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5'
 const GEMINI_MODEL = () => process.env.GEMINI_MODEL || 'gemini-2.5-flash-lite'
 export const hasClaude = () => Boolean(process.env.ANTHROPIC_API_KEY)
 export const hasGemini = () => Boolean(process.env.GEMINI_API_KEY)
 export const hasAI = () => hasClaude() || hasGemini()
 
-const ORDER = { receipt: ['claude', 'gemini'], memo: ['claude', 'gemini'], prep: ['claude', 'gemini'], voice: ['gemini'], draft: ['gemini', 'claude'], video: ['gemini'], yt: ['claude', 'gemini'] }
+const ORDER = { receipt: ['claude', 'gemini'], memo: ['claude', 'gemini'], prep: ['claude', 'gemini'], voice: ['gemini'], draft: ['gemini'], video: ['gemini'], yt: ['gemini'] }
+// 마케팅(초안·유튜브·SNS)은 Gemini 만 씁니다 (대표 결정 2026-11-02)
 
 /**
  * @param task  receipt | memo | prep | voice | draft
@@ -26,17 +27,17 @@ export async function ask(task, p) {
       if (text) return { text, engine: eng === 'claude' ? 'Claude Haiku' : p.video ? `Gemini (${VIDEO_MODEL()})` : 'Gemini Flash-Lite' }
     } catch (e) { tried.push(`${eng}: ${e.message}`); console.error('ai', task, eng, e.message) }
   }
-  throw Object.assign(new Error(tried.length ? tried.join(' / ') : '연결된 AI 엔진이 없습니다'), { code: 'no-ai' })
+  throw Object.assign(new Error(tried.length ? tried.join(' / ') : (ORDER[task] || []).join() === 'gemini' ? 'GEMINI_API_KEY 가 아직 없어요 (Vercel 환경변수)' : '연결된 AI 엔진이 없습니다'), { code: 'no-ai' })
 }
 
-async function claude({ system, text, image, maxTokens = 800, temperature }) {
+async function claude({ system, text, image, maxTokens = 800 }) {
   const content = []
   if (image) content.push({ type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data } })
   content.push({ type: 'text', text })
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: CLAUDE_MODEL(), max_tokens: maxTokens, ...(temperature != null ? { temperature } : {}), ...(system ? { system } : {}), messages: [{ role: 'user', content }] }),
+    body: JSON.stringify({ model: CLAUDE_MODEL(), max_tokens: maxTokens, ...(system ? { system } : {}), messages: [{ role: 'user', content }] }), // 최신 Claude 모델은 temperature 를 받지 않음
   })
   if (!r.ok) throw new Error(`HTTP ${r.status} ${(await r.text()).slice(0, 200)}`)
   const j = await r.json()
