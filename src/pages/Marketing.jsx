@@ -4,11 +4,27 @@ import { CHANNELS, CHANNEL, CONTENT_STATUS } from '../../shared/constants.js'
 import { checkAd } from '../../shared/adRules.js'
 import { addDays, dayLabel, fmtAgo, todayStr } from '../../shared/time.js'
 import { Chips, Empty, Group, Icon, Sheet, useSave } from '../ui.jsx'
+import YouTubeStudio from './YouTube.jsx'
 
 const ST_TONE = { draft: 'gray', review: 'blue', approved: 'teal', published: 'green' }
 
-/* 마케팅 — 콘텐츠 달력, 에이전트 초안, 금지 표현 검사, 승인 → 발행 */
+/* 마케팅 — 콘텐츠 달력 / 유튜브 스튜디오 */
 export default function Marketing({ ctx }) {
+  const [view, setView] = useState(() => { try { return sessionStorage.getItem('alfs_mk_view') || 'cal' } catch { return 'cal' } })
+  const pick = (v) => { setView(v); try { sessionStorage.setItem('alfs_mk_view', v) } catch { /* 무시 */ } }
+  return (
+    <div className="stack">
+      <div className="seg seg-2 seg-top">
+        <button type="button" aria-pressed={view === 'cal'} onClick={() => pick('cal')}>콘텐츠 달력</button>
+        <button type="button" aria-pressed={view === 'yt'} onClick={() => pick('yt')}>유튜브 스튜디오</button>
+      </div>
+      {view === 'cal' ? <Calendar ctx={ctx} /> : <YouTubeStudio ctx={ctx} />}
+    </div>
+  )
+}
+
+/* 콘텐츠 달력 — 에이전트 초안, 금지 표현 검사, 승인 → 발행 */
+function Calendar({ ctx }) {
   const list = ctx.data.contents
   const [st, setSt] = useState('all')
   const [edit, setEdit] = useState(null)

@@ -40,15 +40,16 @@ service cloud.firestore {
       allow delete: if isMember() || (signedIn() && myEmail() == email);
     }
 
-    // 고객 카드: 팀원 모두가 보고 기록. 삭제는 대표만
+    // 고객 카드: 팀원 모두가 보고, 기록은 각자 맡은 영역에서 (화면에서 구분).
+    // 고객 삭제는 대표 또는 그 고객을 맡은 발굴 TM, 기록 삭제는 쓴 사람 또는 대표
     match /leads/{id} {
       allow read, create, update: if isMember();
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || (isMember() && resource.data.tmId == request.auth.uid);
       match /logs/{logId} {
         allow read: if isMember();
         allow create: if isMember() && request.resource.data.by == request.auth.uid;
         allow update: if false;
-        allow delete: if isAdmin();
+        allow delete: if isAdmin() || (isMember() && resource.data.by == request.auth.uid);
       }
     }
     // 모든 기록의 사본 (팀 소식·리포트)
@@ -92,6 +93,13 @@ service cloud.firestore {
     // 마케팅 글
     match /contents/{id} {
       allow read, create, update: if isMember();
+      allow delete: if isAdmin() || (isMember() && resource.data.by == request.auth.uid);
+    }
+    // 유튜브 스튜디오 보관함: 팀원 모두 보고 만들기, 지우기는 만든 사람·대표
+    match /yt/{id} {
+      allow read: if isMember();
+      allow create: if isMember() && request.resource.data.by == request.auth.uid;
+      allow update: if isAdmin() || (isMember() && resource.data.by == request.auth.uid && request.resource.data.by == request.auth.uid);
       allow delete: if isAdmin() || (isMember() && resource.data.by == request.auth.uid);
     }
     // 에이전트 기록·설정

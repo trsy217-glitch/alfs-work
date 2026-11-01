@@ -16,6 +16,8 @@ export const DUTIES = [
   { k: 'salesId', role: 'sales', n: '영업' },
   { k: 'managerId', role: 'manager', n: '샵관리' },
 ]
+// 영업은 고객 한 곳에 2명까지 (salesId = 주 담당, salesId2 = 함께 가는 영업)
+export const salesOf = (l) => [l?.salesId, l?.salesId2].filter(Boolean)
 export const OWNER_OF_STAGE = { new: 'tmId', called: 'tmId', booked: 'salesId', met: 'salesId', nego: 'salesId', won: 'managerId' }
 
 // 고객 단계. 미팅은 1차·2차로 나누지 않고 '미팅 N회'로 셉니다 (대표 결정 2026-10-28)
@@ -42,9 +44,12 @@ export const CALL_RESULTS = [
   { k: 'reject', n: '관심 없음' },
 ]
 export const CALL_RESULT = Object.fromEntries(CALL_RESULTS.map((s) => [s.k, s]))
+// 미팅 결과의 '다음 단계' = 영업 화면 단계 이름과 같게 (대표 요청 2026-10-31)
 export const MEETING_NEXT = [
-  { k: 'again', n: '다시 미팅' },
-  { k: 'nego', n: '계약 협의로' },
+  { k: 'booked', n: '미팅 예약' },
+  { k: 'met', n: '미팅 진행' },
+  { k: 'nego', n: '계약 협의' },
+  { k: 'won', n: '파트너샵' },
   { k: 'hold', n: '보류' },
   { k: 'lost', n: '무산' },
 ]
@@ -89,6 +94,9 @@ export const CHANNELS = [
   { k: 'blog', n: '네이버 블로그' },
   { k: 'instagram', n: '인스타그램' },
   { k: 'shop', n: '파트너샵 배포용' },
+  { k: 'youtube', n: '유튜브' },
+  { k: 'threads', n: '스레드·X' },
+  { k: 'newsletter', n: '뉴스레터' },
   { k: 'etc', n: '기타' },
 ]
 export const CHANNEL = Object.fromEntries(CHANNELS.map((c) => [c.k, c]))

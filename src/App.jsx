@@ -3,7 +3,7 @@ import { AuthProvider, useAuth, inAppBrowser, openInExternalBrowser } from './au
 import {
   demo, watchMyMember, watchMembers, requestJoin, claimInvite, watchLeads, watchEvents, watchActivity, watchExpenses, watchContents, watchSettings, watchAgentRuns,
 } from './store.js'
-import { ROLES, OPEN_STAGES, AGENT } from '../shared/constants.js'
+import { ROLES, OPEN_STAGES, AGENT, salesOf } from '../shared/constants.js'
 import { TABS, DEPT, AGENT_FACE, agentState, deptPeople } from './org.js'
 import Hq from './pages/Hq.jsx'
 import InstallCard from './Install.jsx'
@@ -154,7 +154,7 @@ function Main({ user, me, onOut }) {
   const badges = useMemo(() => {
     const tasks = buildTasks(leads || [], events)
     const mine = tasks.filter((x) => isMine(x, user.id) && x.day <= today && !x.done).length
-    const ack = (leads || []).filter((l) => OPEN_STAGES.includes(l.stage) && l.appt && !l.apptAck && l.salesId === user.id).length
+    const ack = (leads || []).filter((l) => OPEN_STAGES.includes(l.stage) && l.appt && !l.apptAck && salesOf(l).includes(user.id)).length
     return {
       ceo: mine + ack + (isAdmin ? expenses.filter((e) => e.status === 'pending').length : 0),
       finance: isAdmin ? expenses.filter((e) => e.status === 'pending').length : 0,
