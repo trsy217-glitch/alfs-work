@@ -30,7 +30,7 @@ export default function YouTubeStudio({ ctx }) {
   return (
     <div className="stack yt">
       <div className="yt-intro">
-        <b>유튜브 스튜디오</b>
+        <b>유튜브 분석 및 SNS 콘텐츠 생성 스튜디오</b>
         <span className="muted small">벤치마크 영상 분석 → 8초 씬 기획·나레이션·AI 영상/이미지 프롬프트 → 채널 세팅 → 스레드·블로그·뉴스레터까지. 만든 것은 보관함에 팀 전체가 함께 봐요.</span>
       </div>
       <Chips scroll value={tab} onChange={(k) => { setOpen(null); setTab(k) }} items={TABS.map((t) => ({ ...t, c: t.k === 'saved' ? items.length : undefined }))} />

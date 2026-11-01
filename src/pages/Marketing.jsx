@@ -8,7 +8,7 @@ import YouTubeStudio from './YouTube.jsx'
 
 const ST_TONE = { draft: 'gray', review: 'blue', approved: 'teal', published: 'green' }
 
-/* 마케팅 — 콘텐츠 달력 / 유튜브 스튜디오 */
+/* 마케팅 — 콘텐츠 달력 / 유튜브 분석 및 SNS 콘텐츠 생성 스튜디오 */
 export default function Marketing({ ctx }) {
   const [view, setView] = useState(() => { try { return sessionStorage.getItem('alfs_mk_view') || 'cal' } catch { return 'cal' } })
   const pick = (v) => { setView(v); try { sessionStorage.setItem('alfs_mk_view', v) } catch { /* 무시 */ } }
@@ -16,7 +16,7 @@ export default function Marketing({ ctx }) {
     <div className="stack">
       <div className="seg seg-2 seg-top">
         <button type="button" aria-pressed={view === 'cal'} onClick={() => pick('cal')}>콘텐츠 달력</button>
-        <button type="button" aria-pressed={view === 'yt'} onClick={() => pick('yt')}>유튜브 스튜디오</button>
+        <button type="button" aria-pressed={view === 'yt'} onClick={() => pick('yt')}>유튜브 분석 및 SNS 콘텐츠 생성 스튜디오</button>
       </div>
       {view === 'cal' ? <Calendar ctx={ctx} /> : <YouTubeStudio ctx={ctx} />}
     </div>
