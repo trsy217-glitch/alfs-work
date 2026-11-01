@@ -6,11 +6,13 @@ import { Chips, Empty, Icon, PersonPick, Sheet, StagePill, useSave } from '../ui
 
 /* 고객 — 예비샵(진행 중)과 파트너샵을 목록·단계별 보드로 */
 const GROUPS = { scout: ['new', 'called'], sales: ['booked', 'met', 'nego'] }
+// 목록 칩에서 뺀 단계 (발굴·통화 중은 하나로 묶음, 무산은 '전체'에서만 보임)
+const HIDE_CHIPS = ['new', 'called', 'won', 'lost']
 
 export default function Leads({ ctx, preset }) {
   const leads = ctx.data.leads
   const [q, setQ] = useState('')
-  const [stage, setStage] = useState(preset || 'open')
+  const [stage, setStage] = useState(preset || 'all')
   const [mine, setMine] = useState(false)
   const [view, setView] = useState(() => (window.innerWidth >= 900 ? 'board' : 'list'))
   const uid = ctx.user.id
@@ -35,8 +37,8 @@ export default function Leads({ ctx, preset }) {
       <div className="search"><input id="q" className="inp" value={q} onChange={(e) => setQ(e.target.value)} placeholder="매장·이름·전화번호·지역 검색" aria-label="고객 검색" /></div>
       {view === 'list' && (
         <Chips scroll value={stage} onChange={setStage}
-          items={[{ k: 'all', n: '전체', c: counts.all }, ...(preset ? [{ k: preset, n: preset === 'scout' ? '발굴·통화 중' : '미팅·계약 협의', c: counts[preset] }] : []), { k: 'open', n: '예비샵 전체', c: counts.open }, { k: 'won', n: '파트너샵', c: counts.won || 0 },
-            ...STAGES.filter((s) => s.k !== 'won' && !(preset === 'sales' && GROUPS.scout.includes(s.k))).map((s) => ({ k: s.k, n: s.n, c: counts[s.k] || 0 }))]} />
+          items={[{ k: 'all', n: '전체', c: counts.all }, ...(preset === 'sales' ? [{ k: 'sales', n: '미팅·계약 협의', c: counts.sales }] : [{ k: 'scout', n: '발굴·통화 중', c: counts.scout }]), { k: 'won', n: '파트너샵', c: counts.won || 0 },
+            ...STAGES.filter((s) => !HIDE_CHIPS.includes(s.k)).map((s) => ({ k: s.k, n: s.n, c: counts[s.k] || 0 }))]} />
       )}
       <label className="check"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} /> 내가 담당인 고객만</label>
 
