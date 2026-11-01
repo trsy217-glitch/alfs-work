@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
-import { act, callAgent, watchLogs } from '../store.js'
+import { act, callAgent, deleteLead, deleteLog, watchLogs } from '../store.js'
 import {
-  AGENT, CALL_RESULTS, CALL_RESULT, CONTRACT, CONTRACT_STATUS, DUTIES, MEETING_NEXT, OWNER_OF_STAGE, OPEN_STAGES, ROLES, DEFAULT_REORDER_DAYS,
+  AGENT, CALL_RESULTS, CALL_RESULT, CONTRACT, CONTRACT_STATUS, DUTIES, MEETING_NEXT, OWNER_OF_STAGE, OPEN_STAGES, ROLES, DEFAULT_REORDER_DAYS, salesOf,
 } from '../../shared/constants.js'
 import { nextReorder } from '../../shared/work.js'
 import { addDays, fmtAgo, fmtPhone, fmtWhen, nowLocal, telHref, todayStr, won } from '../../shared/time.js'
 import { Chips, Icon, PersonPick, Sheet, StagePill, moneyInput, parseMoney, useSave } from '../ui.jsx'
-import { LeadForm } from './Leads.jsx'
+import { LeadForm, canDeleteLead } from './Leads.jsx'
+
+/** 각자 맡은 영역만 기록·수정, 나머지는 보기만. 대표는 전부 */
+export function areaOf(ctx, l) {
+  const uid = ctx.user.id, role = ctx.me.role, admin = ctx.isAdmin
+  const sales = salesOf(l)
+  const tm = admin || l.tmId === uid || (!l.tmId && role === 'tm')
+  const sl = admin || sales.includes(uid) || (!sales.length && role === 'sales')
+  const mg = admin || l.managerId === uid || (!l.managerId && (role === 'manager' || sales.includes(uid)))
+  return { tm, sales: sl, manager: mg, edit: tm, del: canDeleteLead(ctx, l), any: tm || sl || mg }
+}
 
 const LOG_LABEL = {
   create: '고객 등록', call: '통화', manage: '샵 관리', check: '완료 체크', book: '미팅 예약', ack: '예약 확인', meet: '미팅 결과', contract: '계약',
@@ -29,7 +39,9 @@ export default function LeadDetail({ lead: l, ctx, onClose }) {
 
   const uid = ctx.user.id
   const isOpen = OPEN_STAGES.includes(l.stage)
-  const needAck = isOpen && l.appt && !l.apptAck && l.salesId === uid
+  const can = areaOf(ctx, l)
+  const needAck = isOpen && l.appt && !l.apptAck && salesOf(l).includes(uid)
+  const [sureDel, setSureDel] = useState(false)
   const run = async (fn, msg) => { setBusy(true); try { await fn(); ctx.say(msg); return true } catch { ctx.say('저장하지 못했어요. 다시 눌러 주세요.'); return false } finally { setBusy(false) } }
   const close = () => setSheet(null)
 
@@ -38,12 +50,22 @@ export default function LeadDetail({ lead: l, ctx, onClose }) {
       <header className="d-top">
         <button type="button" className="back" onClick={onClose} aria-label="닫기">‹</button>
         <div className="d-title"><b>{l.name}</b><StagePill l={l} /></div>
-        <button type="button" className="link" onClick={() => setSheet('edit')}>수정</button>
+        <div className="d-acts">
+          {can.edit && <button type="button" className="link" onClick={() => setSheet('edit')}>수정</button>}
+          {can.del && (
+            <button type="button" className="link danger" onClick={async () => {
+              if (!sureDel) { setSureDel(true); setTimeout(() => setSureDel(false), 4000); return }
+              try { await deleteLead(l); onClose(); ctx.say('고객을 삭제했어요') } catch { ctx.say('삭제하지 못했어요') }
+            }}>{sureDel ? '한 번 더 누르면 삭제' : '삭제'}</button>
+          )}
+          {!can.edit && !can.del && <span className="muted small">보기 전용</span>}
+        </div>
       </header>
 
       <div className="d-body">
         <div className="d-cols">
           <div className="d-main">
+            <h3 className="d-sec">고객 정보</h3>
             <div className="info">
               <div className="info-row"><span>원장·담당자</span><b>{l.person || '—'}</b></div>
               <div className="info-row"><span>전화</span>
@@ -52,15 +74,21 @@ export default function LeadDetail({ lead: l, ctx, onClose }) {
               </div>
               <div className="info-row"><span>지역·업종</span><b>{[l.region, l.category].filter(Boolean).join(' · ') || '—'}</b></div>
             </div>
+            <h3 className="d-sec">담당</h3>
             <div className="duties">
-              {DUTIES.map((d) => (
-                <div key={d.k} className={OWNER_OF_STAGE[l.stage] === d.k ? 'now' : ''}>
-                  <span>{d.n}{OWNER_OF_STAGE[l.stage] === d.k && <em>지금</em>}</span>
-                  <b>{l[d.k] ? ctx.nameOf(l[d.k]) : <span className="muted">미정</span>}</b>
-                </div>
-              ))}
+              {DUTIES.map((d) => {
+                const ids = d.k === 'salesId' ? salesOf(l) : [l[d.k]].filter(Boolean)
+                const mine = ids.includes(uid)
+                return (
+                  <div key={d.k} className={`${OWNER_OF_STAGE[l.stage] === d.k ? 'now' : ''} ${mine ? 'is-me' : ''}`}>
+                    <span>{d.n}{OWNER_OF_STAGE[l.stage] === d.k && <em>지금</em>}{mine && <em className="me-tag">나</em>}</span>
+                    <b>{ids.length ? ids.map((id) => ctx.nameOf(id)).join(' · ') : <span className="muted">미정</span>}</b>
+                  </div>
+                )
+              })}
             </div>
 
+            <h3 className="d-sec">진행 상황</h3>
             <div className="status">
               {isOpen ? (
                 <div className={l.appt ? (l.apptAck ? '' : 'hot') : 'off'}>
@@ -79,28 +107,30 @@ export default function LeadDetail({ lead: l, ctx, onClose }) {
 
             {needAck && (
               <button type="button" className="btn-primary ack" disabled={busy}
-                onClick={() => run(async () => { await act(ctx.user, l, { type: 'ack', text: `${fmtWhen(l.appt.at)} 미팅 확인했습니다` }, { apptAck: true }); callAgent('notify', { kind: 'ack', leadId: l.id }) }, '예약을 확인했어요. TM에게 알렸어요')}>
+                onClick={() => run(async () => { await act(ctx.user, l, { type: 'ack', text: `${fmtWhen(l.appt.at)} 미팅 확인했습니다` }, { apptAck: true }); callAgent('notify', { kind: 'ack', leadId: l.id }) }, '예약을 확인했어요')}>
                 {fmtWhen(l.appt.at)} 미팅 확인했어요
               </button>
             )}
 
-            {(isOpen || l.stage === 'won') && <MeetingPrep l={l} logs={logs} ctx={ctx} />}
+            {(isOpen || l.stage === 'won') && <MeetingPrep l={l} logs={logs} ctx={ctx} canMake={can.sales || can.tm} />}
 
+            <h3 className="d-sec">기록하기</h3>
             <div className="actions">
-              {isOpen && <button type="button" onClick={() => setSheet('call')}><b>통화 기록</b><small>결과·다음 통화</small></button>}
-              {isOpen && <button type="button" onClick={() => setSheet('book')}><b>미팅 예약</b><small>일시·영업 담당 → 알림</small></button>}
-              {isOpen && <button type="button" onClick={() => setSheet('meet')}><b>미팅 결과</b><small>{(l.meetings || 0) + 1}번째 미팅 · 다음 단계</small></button>}
-              <button type="button" onClick={() => setSheet('contract')}><b>계약 상황</b><small>협의·완료 → 파트너샵</small></button>
-              {l.stage === 'won' && <button type="button" onClick={() => setSheet('order')}><b>주문 기록</b><small>재발주 예상일 자동 계산</small></button>}
-              <button type="button" onClick={() => setSheet('manage')}><b>관리 기록</b><small>방문·교육·다음 관리</small></button>
+              {isOpen && <Act on={can.tm} who="발굴 TM" onClick={() => setSheet('call')} t="통화 기록" s="결과·다음 통화" />}
+              {isOpen && <Act on={can.tm || can.sales} who="발굴 TM·영업" onClick={() => setSheet('book')} t="미팅 예약" s="일시·영업 담당(2명까지) → 알림" />}
+              {isOpen && <Act on={can.sales} who="영업" onClick={() => setSheet('meet')} t="미팅 결과" s={`${(l.meetings || 0) + 1}번째 미팅 · 다음 단계`} />}
+              <Act on={can.sales} who="영업" onClick={() => setSheet('contract')} t="계약 상황" s="협의·완료 → 파트너샵" />
+              {l.stage === 'won' && <Act on={can.manager || can.sales} who="샵관리·영업" onClick={() => setSheet('order')} t="주문 기록" s="재발주 예상일 자동 계산" />}
+              <Act on={can.manager} who="샵관리" onClick={() => setSheet('manage')} t="관리 기록" s="방문·교육·다음 관리" />
             </div>
+            {!can.any && <p className="muted small">이 고객은 보기만 할 수 있어요. 기록은 맡은 담당자가 남기고, 아래 '팀원에게 남길 말'로 의견을 전할 수 있어요.</p>}
           </div>
 
           <div className="d-side">
             <h3 className="h3">기록과 대화</h3>
             <div className="timeline">
               {logs.length === 0 && <p className="muted small">아직 기록이 없어요.</p>}
-              {logs.map((g) => <LogItem key={g.id} g={g} ctx={ctx} mine={g.by === uid} />)}
+              {logs.map((g) => <LogItem key={g.id} g={g} ctx={ctx} mine={g.by === uid} onDelete={(ctx.isAdmin || (g.by === uid && !g.agent)) && g.type !== 'create' ? async () => { try { await deleteLog(l, g); ctx.say('기록을 지웠어요') } catch { ctx.say('지우지 못했어요') } } : null} />)}
               <div ref={endRef} />
             </div>
           </div>
@@ -111,14 +141,18 @@ export default function LeadDetail({ lead: l, ctx, onClose }) {
         e.preventDefault(); const v = note.trim(); if (!v) return
         if (await run(() => act(ctx.user, l, { type: 'note', text: v }), '남겼어요')) setNote('')
       }}>
-        <input id="note" className="inp" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="팀원에게 남길 말" aria-label="메모 남기기" />
-        <button className="btn-send" disabled={busy || !note.trim()}>보내기</button>
+        <textarea id="note" className="inp" rows={note.length > 60 || note.includes('\n') ? 5 : 1} value={note} onChange={(e) => setNote(e.target.value)} maxLength={2500} placeholder="메모·고객 이야기·팀원에게 남길 말" aria-label="메모 남기기" />
+        <div className="composer-r">
+          {note.length > 0 && <small className="muted">{note.length}/2500</small>}
+          <button className="btn-send" disabled={busy || !note.trim()}>보내기</button>
+        </div>
       </form>
 
       {sheet === 'call' && <CallSheet l={l} ctx={ctx} onClose={close} />}
       {sheet === 'book' && <BookSheet l={l} ctx={ctx} onClose={close} />}
-      {sheet === 'meet' && <MeetSheet l={l} ctx={ctx} onClose={close} />}
+      {sheet === 'meet' && <MeetSheet l={l} ctx={ctx} onClose={close} onWon={() => setSheet('contract-won')} />}
       {sheet === 'contract' && <ContractSheet l={l} ctx={ctx} onClose={close} />}
+      {sheet === 'contract-won' && <ContractSheet l={l} ctx={ctx} onClose={close} initial="won" />}
       {sheet === 'manage' && <ManageSheet l={l} ctx={ctx} onClose={close} />}
       {sheet === 'order' && <OrderSheet l={l} ctx={ctx} onClose={close} />}
       {sheet === 'edit' && <LeadForm ctx={ctx} lead={l} onClose={close} onSaved={() => { close(); ctx.say('고쳤어요') }} onDeleted={() => { close(); onClose(); ctx.say('삭제했어요') }} />}
@@ -126,8 +160,13 @@ export default function LeadDetail({ lead: l, ctx, onClose }) {
   )
 }
 
+function Act({ on, who, onClick, t, s }) {
+  return on ? <button type="button" onClick={onClick}><b>{t}</b><small>{s}</small></button>
+    : <button type="button" className="is-ro" disabled title={`${who} 담당 영역이에요`}><b>{t}</b><small>{who} 담당 · 보기만</small></button>
+}
+
 /* ── 다음 미팅 준비 (영업지원 에이전트) ── */
-export function MeetingPrep({ l, logs, ctx, compact }) {
+export function MeetingPrep({ l, logs, ctx, compact, canMake = true }) {
   const [busy, setBusy] = useState(false)
   const [local, setLocal] = useState(null)
   const prep = l.prep?.text ? l.prep : local
@@ -153,7 +192,7 @@ export function MeetingPrep({ l, logs, ctx, compact }) {
     <section className="prep">
       <div className="prep-h"><Icon k="spark" /><b>{l.stage === 'won' ? '다음 방문 준비' : `다음 미팅 준비${l.appt?.at ? ` · ${fmtWhen(l.appt.at)}` : ''}`}</b>
         <span className="grow" />
-        <button type="button" className="btn-mini" disabled={busy} onClick={make}>{busy ? '정리하는 중…' : prep ? '다시 만들기' : '준비 메모 만들기'}</button>
+        {canMake && <button type="button" className="btn-mini" disabled={busy} onClick={make}>{busy ? '정리하는 중…' : prep ? '다시 만들기' : '준비 메모 만들기'}</button>}
       </div>
       {prep ? (
         <>
@@ -173,13 +212,14 @@ function prepFallback(l, logs) {
   return lines.join('\n')
 }
 
-function LogItem({ g, ctx, mine }) {
+function LogItem({ g, ctx, mine, onDelete }) {
+  const [sure, setSure] = useState(false)
   const agent = g.agent && AGENT[g.agent]
   const role = agent ? null : ctx.roleOf(g.by)
   let head = LOG_LABEL[g.type] || '기록'
   let detail = ''
   if (g.type === 'call') { head = `통화 · ${CALL_RESULT[g.result]?.n || ''}`; if (g.nextCall) detail = `다음 통화 ${fmtWhen(g.nextCall)}` }
-  if (g.type === 'book') detail = [fmtWhen(g.apptAt), g.place, g.salesId && `영업 ${ctx.nameOf(g.salesId)}`].filter(Boolean).join(' · ')
+  if (g.type === 'book') detail = [fmtWhen(g.apptAt), g.place, g.salesId && `영업 ${[g.salesId, g.salesId2].filter(Boolean).map((id) => ctx.nameOf(id)).join('·')}`].filter(Boolean).join(' · ')
   if (g.type === 'manage') detail = g.nextManage ? `다음 관리 ${fmtWhen(g.nextManage)}` : ''
   if (g.type === 'check') head = `✓ ${g.text || '완료'}`
   if (g.type === 'meet') { head = `${g.count || ''}번째 미팅 결과`; detail = g.nextLabel ? `다음: ${g.nextLabel}${g.apptAt ? ` (${fmtWhen(g.apptAt)})` : ''}` : '' }
@@ -189,7 +229,8 @@ function LogItem({ g, ctx, mine }) {
   const isNote = g.type === 'note'
   return (
     <div className={`log ${isNote ? 'log-note' : `log-${g.type}`} ${mine ? 'mine' : ''} ${agent ? 'log-agent' : ''}`}>
-      <div className="log-h"><b>{agent ? `${agent.n} 에이전트` : ctx.nameOf(g.by)}</b>{role && <span className={`role role-${role}`}>{ROLES[role]?.short}</span>}{g.via === 'telegram' && <span className="via">텔레그램</span>}<span className="muted">{fmtAgo(g.at)}</span></div>
+      <div className="log-h"><b>{agent ? `${agent.n} 에이전트` : ctx.nameOf(g.by)}</b>{role && <span className={`role role-${role}`}>{ROLES[role]?.short}</span>}{g.via === 'telegram' && <span className="via">텔레그램</span>}<span className="muted">{fmtAgo(g.at)}</span>
+        {onDelete && <button type="button" className="log-del" onClick={() => { if (!sure) { setSure(true); setTimeout(() => setSure(false), 4000); return } onDelete() }}>{sure ? '한 번 더' : '삭제'}</button>}</div>
       {!isNote && g.type !== 'check' && <div className="log-type">{head}</div>}
       {g.type === 'check' && <div className="log-type">{head}</div>}
       {detail && <div className="log-d">{detail}</div>}
@@ -216,7 +257,7 @@ function CallSheet({ l, ctx, onClose }) {
       <div className="field"><span>통화 결과</span><Chips items={CALL_RESULTS} value={result} onChange={setResult} /></div>
       {needNext && <label className="field"><span>다시 걸 때</span><input type="datetime-local" className="inp" value={next} min={nowLocal()} onChange={(e) => setNext(e.target.value)} /></label>}
       {result === 'reject' && <p className="hint">'관심 없음'을 저장하면 이 고객은 무산 단계로 옮겨져요.</p>}
-      <label className="field"><span>통화 내용</span><textarea className="inp" rows={3} value={text} maxLength={800} onChange={(e) => setText(e.target.value)} placeholder="관심 있어 한 점, 물어본 것, 다음에 할 이야기" /></label>
+      <label className="field"><span>통화 내용</span><textarea className="inp memo" rows={8} value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} placeholder="관심 있어 한 점, 물어본 것, 다음에 할 이야기" /></label>
       {result === 'talked' && <p className="hint">미팅이 잡혔다면 저장 후 '미팅 예약'을 눌러 영업에게 넘겨 주세요.</p>}
       {err && <p className="err">{err}</p>}
     </Sheet>
@@ -227,31 +268,38 @@ function BookSheet({ l, ctx, onClose }) {
   const [at, setAt] = useState(l.appt?.at || '')
   const [place, setPlace] = useState(l.appt?.place || '매장 방문')
   const [sales, setSales] = useState(l.salesId || (ctx.me.role === 'sales' ? ctx.user.id : ''))
+  const [sales2, setSales2] = useState(l.salesId2 || '')
   const [text, setText] = useState('')
   const { busy, err, setErr, save } = useSave(ctx, onClose)
   return (
     <Sheet title="미팅 예약" onClose={onClose} busy={busy} onSubmit={() => {
       if (!at) return setErr('미팅 날짜·시간을 정해 주세요.')
       if (!sales) return setErr('대면 미팅할 영업 담당을 골라 주세요.')
-      const selfBooked = sales === ctx.user.id
+      if (sales2 && sales2 === sales) return setErr('영업 1과 영업 2를 다른 사람으로 골라 주세요.')
+      const team = [sales, sales2].filter(Boolean)
+      const selfOnly = team.length === 1 && sales === ctx.user.id
+      const names = team.filter((id) => id !== ctx.user.id).map((id) => ctx.nameOf(id)).join('·')
       save(async () => {
-        await act(ctx.user, l, { type: 'book', apptAt: at, place: place.trim(), salesId: sales, text: text.trim() },
-          { appt: { at, place: place.trim(), reminded: false }, apptAck: selfBooked, salesId: sales, nextCall: null, stage: ['new', 'called', 'met', 'hold'].includes(l.stage) ? 'booked' : l.stage, prep: null })
-        if (!selfBooked) callAgent('notify', { kind: 'booking', leadId: l.id })
-      }, selfBooked ? '미팅을 예약했어요' : `미팅을 예약하고 ${ctx.nameOf(sales)}님에게 알렸어요`)
+        await act(ctx.user, l, { type: 'book', apptAt: at, place: place.trim(), salesId: sales, salesId2: sales2 || null, text: text.trim() },
+          { appt: { at, place: place.trim(), reminded: false }, apptAck: selfOnly, salesId: sales, salesId2: sales2 || null, nextCall: null, stage: ['new', 'called', 'met', 'hold'].includes(l.stage) ? 'booked' : l.stage, prep: null })
+        if (!selfOnly) callAgent('notify', { kind: 'booking', leadId: l.id })
+      }, selfOnly ? '미팅을 예약했어요' : `미팅을 예약했어요. ${names}님 브리핑에 들어가요`)
     }}>
       <label className="field"><span>미팅 일시</span><input type="datetime-local" className="inp" value={at} onChange={(e) => setAt(e.target.value)} /></label>
       <label className="field"><span>장소</span><input className="inp" value={place} maxLength={60} onChange={(e) => setPlace(e.target.value)} /></label>
-      <label className="field"><span>대면 미팅 담당 (영업)</span><PersonPick id="pickSales" ctx={ctx} role="sales" value={sales} onChange={setSales} /></label>
-      <label className="field"><span>영업에게 전할 말</span><textarea className="inp" rows={3} value={text} maxLength={500} onChange={(e) => setText(e.target.value)} placeholder="원장님 관심사, 통화에서 나온 이야기" /></label>
-      <p className="hint">저장하면 영업 담당에게 텔레그램으로 '미팅 배정' 알림과 확인 버튼이 가고, 미팅 1시간 전에 준비 메모가 다시 갑니다.</p>
+      <div className="row2">
+        <label className="field"><span>대면 미팅 담당 (영업 1)</span><PersonPick id="pickSales" ctx={ctx} role="sales" value={sales} onChange={setSales} /></label>
+        <label className="field"><span>함께 갈 영업 (영업 2, 선택)</span><PersonPick id="pickSales2" ctx={ctx} role="sales" value={sales2} onChange={setSales2} /></label>
+      </div>
+      <label className="field"><span>영업에게 전할 말</span><textarea className="inp memo" rows={7} value={text} maxLength={2500} onChange={(e) => setText(e.target.value)} placeholder="원장님 관심사, 통화에서 나온 이야기" /></label>
+      <p className="hint">저장하면 영업 담당(2명이면 두 사람 모두)의 앱 '오늘'과 다음 텔레그램 브리핑에 미팅 배정이 올라가요. 미팅 날 아침 브리핑에는 준비 메모가 함께 가요.</p>
       {err && <p className="err">{err}</p>}
     </Sheet>
   )
 }
 
-function MeetSheet({ l, ctx, onClose }) {
-  const [next, setNext] = useState('again')
+function MeetSheet({ l, ctx, onClose, onWon }) {
+  const [next, setNext] = useState('booked')
   const [again, setAgain] = useState('')
   const [text, setText] = useState('')
   const [todo, setTodo] = useState('')
@@ -260,30 +308,36 @@ function MeetSheet({ l, ctx, onClose }) {
   return (
     <Sheet title={`${count}번째 미팅 결과`} onClose={onClose} busy={busy} onSubmit={() => {
       if (!text.trim()) return setErr('미팅에서 나눈 이야기를 적어 주세요.')
-      if (next === 'again' && !again) return setErr('다음 미팅 일시를 정해 주세요.')
+      if (next === 'booked' && !again) return setErr('다음 미팅 일시를 정해 주세요.')
       const label = MEETING_NEXT.find((o) => o.k === next).n
-      const patch = next === 'again'
-        ? { stage: 'met', appt: { at: again, place: l.appt?.place || '', reminded: false }, apptAck: l.salesId === ctx.user.id || !l.salesId, prep: null }
-        : { stage: next, appt: null, apptAck: false, prep: null, ...(next === 'nego' && !l.contract ? { contract: { status: 'nego', amount: 0, date: '' } } : {}) }
+      const withAppt = (next === 'booked' || next === 'met') && again
+      const team = salesOf(l)
+      const patch = withAppt
+        ? { stage: next, appt: { at: again, place: l.appt?.place || '', reminded: false }, apptAck: team.length <= 1 && (team[0] === ctx.user.id || !team.length), prep: null }
+        : next === 'met' ? { stage: 'met', appt: null, apptAck: false, prep: null }
+          : next === 'won' ? { appt: null, apptAck: false, prep: null }
+            : { stage: next, appt: null, apptAck: false, prep: null, ...(next === 'nego' && !l.contract ? { contract: { status: 'nego', amount: 0, date: '' } } : {}) }
       if (!l.salesId) patch.salesId = ctx.user.id
       const full = [text.trim(), todo.trim() && `다음에 할 것: ${todo.trim()}`].filter(Boolean).join('\n')
       save(async () => {
-        await act(ctx.user, l, { type: 'meet', count, next, nextLabel: label, apptAt: next === 'again' ? again : null, text: full }, patch, { meetings: 1 })
+        await act(ctx.user, l, { type: 'meet', count, next, nextLabel: label, apptAt: withAppt ? again : null, text: full }, patch, { meetings: 1 })
         callAgent('after-meeting', { leadId: l.id })
-      }, next === 'again' ? '저장했어요. 다음 미팅 준비 메모를 만들게요' : '미팅 결과를 남겼어요')
+        if (next === 'won') setTimeout(() => onWon?.(), 0)
+      }, next === 'won' ? '미팅 결과를 남겼어요. 계약 내용을 적어 주세요' : withAppt ? '저장했어요. 다음 미팅 준비 메모를 만들게요' : '미팅 결과를 남겼어요')
     }}>
-      <label className="field"><span>미팅 내용</span><textarea className="inp" rows={4} value={text} maxLength={1200} onChange={(e) => setText(e.target.value)} placeholder="원장님 반응, 질문, 걱정하는 점, 매장 상황" /></label>
-      <label className="field"><span>다음에 할 것·약속 (선택)</span><input className="inp" value={todo} maxLength={200} onChange={(e) => setTodo(e.target.value)} placeholder="예: 시음 샘플 2병, 진열대 사진 보내기" /></label>
+      <label className="field"><span>미팅 내용</span><textarea className="inp memo" rows={9} value={text} maxLength={6000} onChange={(e) => setText(e.target.value)} placeholder="원장님 반응, 질문, 걱정하는 점, 매장 상황" /></label>
+      <label className="field"><span>다음에 할 것·약속 (선택)</span><textarea className="inp memo" rows={3} value={todo} maxLength={1000} onChange={(e) => setTodo(e.target.value)} placeholder="예: 시음 샘플 2병, 진열대 사진 보내기" /></label>
       <div className="field"><span>다음 단계</span><Chips items={MEETING_NEXT} value={next} onChange={setNext} /></div>
-      {next === 'again' && <label className="field"><span>다음 미팅 일시</span><input type="datetime-local" className="inp" value={again} onChange={(e) => setAgain(e.target.value)} /></label>}
+      {(next === 'booked' || next === 'met') && <label className="field"><span>다음 미팅 일시{next === 'met' ? ' (정해졌으면)' : ''}</span><input type="datetime-local" className="inp" value={again} onChange={(e) => setAgain(e.target.value)} /></label>}
+      {next === 'won' && <p className="hint">저장하면 바로 '계약 상황' 창이 열려요. 계약 완료로 저장하면 파트너샵으로 옮겨져요.</p>}
       <p className="hint">저장하면 영업지원 에이전트가 이 기록을 읽고 다음 미팅에서 할 이야기와 준비할 것을 정리해 둡니다.</p>
       {err && <p className="err">{err}</p>}
     </Sheet>
   )
 }
 
-function ContractSheet({ l, ctx, onClose }) {
-  const [status, setStatus] = useState(l.contract?.status || 'nego')
+function ContractSheet({ l, ctx, onClose, initial }) {
+  const [status, setStatus] = useState(initial || l.contract?.status || 'nego')
   const [amount, setAmount] = useState(l.contract?.amount ? Number(l.contract.amount).toLocaleString('ko-KR') : '')
   const [date, setDate] = useState(l.contract?.date || todayStr())
   const [text, setText] = useState('')
@@ -317,7 +371,7 @@ function ContractSheet({ l, ctx, onClose }) {
           <p className="hint">계약 완료로 저장하면 '예비샵'에서 '파트너샵'으로 바뀌고, 샵관리 에이전트가 재발주 때를 챙깁니다.</p>
         </>
       )}
-      <label className="field"><span>내용</span><textarea className="inp" rows={3} value={text} maxLength={500} onChange={(e) => setText(e.target.value)} /></label>
+      <label className="field"><span>내용</span><textarea className="inp memo" rows={7} value={text} maxLength={2500} onChange={(e) => setText(e.target.value)} /></label>
       {err && <p className="err">{err}</p>}
     </Sheet>
   )
@@ -333,7 +387,7 @@ function ManageSheet({ l, ctx, onClose }) {
       if (!text.trim()) return setErr('관리한 내용을 적어 주세요.')
       save(() => act(ctx.user, l, { type: 'manage', nextManage: next || null, text: text.trim() }, { nextManage: next || null, managerId: manager || null }, { manages: 1 }), '관리 기록을 남겼어요')
     }}>
-      <label className="field"><span>관리 내용</span><textarea className="inp" rows={4} value={text} maxLength={800} onChange={(e) => setText(e.target.value)} placeholder="방문·교육·진열 점검·판매 상황" /></label>
+      <label className="field"><span>관리 내용</span><textarea className="inp memo" rows={10} value={text} maxLength={4000} onChange={(e) => setText(e.target.value)} placeholder="방문·교육·진열 점검·판매 상황" /></label>
       <div className="row2">
         <label className="field"><span>다음 관리 일정</span><input type="datetime-local" className="inp" value={next} onChange={(e) => setNext(e.target.value)} /></label>
         <label className="field"><span>관리 담당</span><PersonPick id="pickManager2" ctx={ctx} role="manager" value={manager} onChange={setManager} /></label>
@@ -362,8 +416,8 @@ export function OrderSheet({ l, ctx, onClose }) {
         <label className="field"><span>금액 (선택)</span><input className="inp" inputMode="numeric" value={amount} placeholder="0" onChange={moneyInput(setAmount)} /></label>
       </div>
       <label className="field"><span>주문일</span><input type="date" className="inp" value={date} onChange={(e) => setDate(e.target.value)} /></label>
-      <p className="hint">다음 재발주 예상일: {fmtWhen(nr)} (주기 {cycle}일). 그날 아침 샵관리 담당에게 알림이 가요.</p>
-      <label className="field"><span>메모</span><input className="inp" value={text} maxLength={200} onChange={(e) => setText(e.target.value)} /></label>
+      <p className="hint">다음 재발주 예상일: {fmtWhen(nr)} (주기 {cycle}일). 3일 전부터 샵관리 담당의 아침 브리핑에 올라가요.</p>
+      <label className="field"><span>메모</span><textarea className="inp memo" rows={3} value={text} maxLength={1000} onChange={(e) => setText(e.target.value)} /></label>
       {err && <p className="err">{err}</p>}
     </Sheet>
   )

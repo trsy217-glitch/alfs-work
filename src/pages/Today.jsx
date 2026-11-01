@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { OPEN_STAGES, TASK_TYPES, CONTENT_STATUS } from '../../shared/constants.js'
+import { OPEN_STAGES, TASK_TYPES, CONTENT_STATUS, salesOf } from '../../shared/constants.js'
 import { briefingFor, buildTasks, isMine } from '../../shared/work.js'
 import { daysBetween, dayLabel, fmtAgo, fmtWhen, kst, todayStr, weekDays, won } from '../../shared/time.js'
 import { Empty, Group, Icon, StagePill } from '../ui.jsx'
@@ -24,10 +24,10 @@ export default function Today({ ctx }) {
   const brief = useMemo(() => briefingFor({ ...me, id: user.id }, data, kst()), [me, user.id, data])
 
   const open = data.leads.filter((l) => OPEN_STAGES.includes(l.stage))
-  const toAck = open.filter((l) => l.appt && !l.apptAck && l.salesId === user.id)
-  const soonMeet = open.filter((l) => l.appt?.at && l.salesId === user.id && daysBetween(today, l.appt.at) >= 0 && daysBetween(today, l.appt.at) <= 3)
+  const toAck = open.filter((l) => l.appt && !l.apptAck && salesOf(l).includes(user.id))
+  const soonMeet = open.filter((l) => l.appt?.at && salesOf(l).includes(user.id) && daysBetween(today, l.appt.at) >= 0 && daysBetween(today, l.appt.at) <= 3)
     .sort((a, b) => a.appt.at.localeCompare(b.appt.at))
-  const late = open.filter((l) => l.stage === 'booked' && l.appt?.at && l.appt.at.slice(0, 10) < today && (scope === 'all' || l.salesId === user.id))
+  const late = open.filter((l) => l.stage === 'booked' && l.appt?.at && l.appt.at.slice(0, 10) < today && (scope === 'all' || salesOf(l).includes(user.id)))
   const waitExp = ctx.isAdmin ? data.expenses.filter((e) => e.status === 'pending') : []
   const waitCt = ctx.isAdmin ? data.contents.filter((c) => c.status === 'review') : []
   const news = data.activity.filter((a) => a.by !== user.id && a.type !== 'check').slice(0, 6)
@@ -61,7 +61,7 @@ export default function Today({ ctx }) {
       )}
 
       {toAck.length > 0 && (
-        <Group title="확인할 미팅 예약" tone="alert" count={toAck.length} note="TM이 잡아 넘긴 미팅이에요. 열어서 '확인'을 누르면 TM에게 알림이 가요.">
+        <Group title="확인할 미팅 예약" tone="alert" count={toAck.length} note="TM이 잡아 넘긴 미팅이에요. 열어서 '확인'을 눌러 주세요.">
           <div className="list">{toAck.map((l) => (
             <button type="button" className="card" key={l.id} onClick={() => ctx.openLead(l.id)}>
               <span className="card-h"><b>{l.name}</b><StagePill l={l} /></span>

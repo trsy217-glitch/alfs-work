@@ -150,18 +150,26 @@ function CompanySettings({ ctx }) {
   const s = ctx.settings
   const [limit, setLimit] = useState(Number(s.approvalLimit).toLocaleString('ko-KR'))
   const [time, setTime] = useState(s.briefingTime || '08:30')
+  const [eve, setEve] = useState(s.eveningTime || '17:00')
+  const [days, setDays] = useState(s.briefDays || 'daily')
+  const [rt, setRt] = useState(s.realtime === true)
   const [busy, setBusy] = useState(false)
   return (
     <Group title="회사 설정 (대표)">
       <div className="panel-box">
         <div className="row2">
           <label className="field"><span>대표 승인이 필요한 비용</span><div className="amount amount-sm"><input className="num" inputMode="numeric" value={limit} onChange={moneyInput(setLimit)} /><b>원 이상</b></div></label>
-          <label className="field"><span>아침 브리핑 시각 (평일)</span><input type="time" className="inp" value={time} step={900} onChange={(e) => setTime(e.target.value)} /></label>
+          <div className="field"><span>브리핑 요일</span><Chips items={[{ k: 'daily', n: '매일' }, { k: 'weekdays', n: '평일만' }]} value={days} onChange={setDays} /></div>
         </div>
-        <p className="muted small">예약 작업이 15분마다 돌아서 브리핑은 정한 시각부터 15분 안에 도착해요.</p>
+        <div className="row2">
+          <label className="field"><span>아침 브리핑</span><input type="time" className="inp" value={time} step={900} onChange={(e) => setTime(e.target.value)} /></label>
+          <label className="field"><span>저녁 브리핑</span><input type="time" className="inp" value={eve} step={900} onChange={(e) => setEve(e.target.value)} /></label>
+        </div>
+        <label className="check"><input type="checkbox" checked={rt} onChange={(e) => setRt(e.target.checked)} /> 수시 알림도 바로 보내기 (미팅 배정·승인 요청 등). 끄면 하루 2번 브리핑에 모아서 보내요</label>
+        <p className="muted small">팀원은 각자 이름으로 오늘 할 일(아침)·오늘 정리와 내일 일정(저녁)을, 대표는 팀 전체 리포트를 받아요. 예약 작업이 15분마다 돌아서 정한 시각부터 15분 안에 도착해요. 텔레그램에서 '오늘'·'저녁'·'리포트'라고 보내면 언제든 받아 볼 수 있어요.</p>
         <button type="button" className="btn-primary" disabled={busy} onClick={async () => {
           const v = parseMoney(limit); if (!v) return ctx.say('금액을 적어 주세요')
-          setBusy(true); try { await saveSettings({ approvalLimit: v, briefingTime: time }); ctx.say(`${won(v)}원 이상은 승인, 브리핑 ${time}로 저장했어요`) } finally { setBusy(false) }
+          setBusy(true); try { await saveSettings({ approvalLimit: v, briefingTime: time, eveningTime: eve, briefDays: days, realtime: rt }); ctx.say(`저장했어요 · 브리핑 ${time}·${eve} ${days === 'daily' ? '매일' : '평일'}`) } finally { setBusy(false) }
         }}>설정 저장</button>
       </div>
       <div className="panel-box">

@@ -1,20 +1,21 @@
 // POST /api/telegram — 텔레그램 봇(알프스 비서) 웹훅
 // 팀원이 보내는 것: /start 코드(연결) · 글 메모 · 음성 메모 · 영수증 사진 · '오늘'
 // 버튼: 메모 저장/취소 · 비용 승인/반려 · 미팅 배정 확인
-import { adminReady, db, iso, getSettings, agentOn, logRun, serverAct, membersAll } from './_lib/admin.js'
+import { adminReady, db, iso, getSettings, agentOn, logRun, serverAct, membersAll, pushOn } from './_lib/admin.js'
 import { ask, hasAI } from './_lib/ai.js'
 import { send, edit, answer, typing, download, esc, appUrl } from './_lib/tg.js'
 import { readReceipt, saveExpense, askApproval, parseMemo, proposalText, applyProposal, notifyAck } from './_lib/agents.js'
 import { sendBriefing } from './_lib/brief.js'
 import { EXP_CAT } from '../shared/constants.js'
-import { won } from '../shared/time.js'
+import { won, kst } from '../shared/time.js'
 
 const HELP = `<b>알프스 비서 사용법</b>
 · 통화·미팅 후 메모를 그대로 보내세요 → 발굴 에이전트가 고객 카드로 정리해 '저장' 버튼을 드려요
   예) 망원동 초록카페 김원장 통화, 시음에 관심. 목요일 2시 매장 미팅
 · 음성 메모도 돼요 (말로 녹음해서 보내기)
 · 영수증 사진을 보내면 정산 에이전트가 금액·항목을 읽어 올려요 (사진 설명에 메모를 적어도 돼요)
-· '오늘' 이라고 보내면 오늘 브리핑을 다시 보내드려요`
+· '오늘' → 오늘 할 일 · '저녁' → 오늘 정리와 내일 일정 · '리포트' → (대표) 팀 전체 현황
+· 브리핑은 매일 아침·저녁 두 번만 먼저 보내고, 그 밖에는 물어보실 때만 답해요`
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(200).send('ok')
@@ -45,7 +46,7 @@ async function onMessage(m) {
     const doc = q.docs[0]
     if (doc.data().tgCodeAt && Date.now() - new Date(doc.data().tgCodeAt) > 86400e3) return send(chat, '코드가 만료됐어요. 앱에서 새 코드를 만들어 주세요.')
     await doc.ref.update({ tgChatId: chat, tgCode: null, tgLinkedAt: iso() })
-    return send(chat, `${esc(doc.data().name)}님, 연결됐어요! 평일 아침 브리핑과 미팅 알림을 여기로 보내드릴게요.\n\n${HELP}`)
+    return send(chat, `${esc(doc.data().name)}님, 연결됐어요! 매일 아침·저녁 브리핑을 여기로 보내드릴게요. 그 밖에는 물어보실 때만 답해요.\n\n${HELP}`)
   }
 
   const me = await memberByChat(chat)
@@ -53,7 +54,9 @@ async function onMessage(m) {
   const settings = await getSettings()
 
   if (/^\/?(help|도움|도움말|start)$/i.test(text)) return send(chat, HELP)
-  if (/^\/?(today|오늘|브리핑)$/i.test(text)) return sendBriefing(me)
+  if (/^\/?(today|오늘|브리핑|아침)$/i.test(text)) return sendBriefing(me, null, 'morning')
+  if (/^\/?(evening|저녁|마감|정리|내일)$/i.test(text)) return sendBriefing(me, null, 'evening')
+  if (/^\/?(report|리포트|팀|현황)$/i.test(text)) return sendBriefing(me, null, kst().hm >= 12 * 60 ? 'evening' : 'morning')
 
   // 영수증 사진
   if (m.photo?.length || (m.document && /^image\//.test(m.document.mime_type || ''))) {
@@ -72,7 +75,7 @@ async function onMessage(m) {
     await logRun('finance', `영수증 · ${c} ${won(exp.amount)}원`, `${me.name} · ${exp.status === 'pending' ? '대표 승인 요청' : '자동 승인'}${exp.memo ? ` · ${exp.memo}` : ''}`, { engine: r.engine, by: me.id })
     if (exp.status === 'pending') await askApproval(exp, me)
     const tail = exp.category === 'entertain' && !text ? '\n접대비는 누구와 썼는지 앱에서 메모를 적어 주세요.' : ''
-    return send(chat, `${exp.status === 'pending' ? '⏳' : '✓'} <b>${esc(c)} ${won(exp.amount)}원</b> (${esc(exp.date.slice(5).replace('-', '.'))}) 저장했어요\n${exp.status === 'pending' ? `${won(settings.approvalLimit)}원 이상이라 대표 승인을 요청했어요` : '자동 승인됐어요'}${exp.memo ? `\n메모: ${esc(exp.memo)}` : ''}${tail}`,
+    return send(chat, `${exp.status === 'pending' ? '⏳' : '✓'} <b>${esc(c)} ${won(exp.amount)}원</b> (${esc(exp.date.slice(5).replace('-', '.'))}) 저장했어요\n${exp.status === 'pending' ? `${won(settings.approvalLimit)}원 이상이라 대표 승인 대기예요 (대표 브리핑에 올라가요)` : '자동 승인됐어요'}${exp.memo ? `\n메모: ${esc(exp.memo)}` : ''}${tail}`,
       [[{ text: '항목·금액 고치기', url: appUrl('expenses') }]])
   }
 
@@ -120,7 +123,7 @@ async function onButton(q) {
     await answer(q.id, '저장했어요')
     const members = await membersAll()
     const who = assigned ? members.find((x) => x.id === assigned) : null
-    return edit(chat, mid, `${proposalText(s.data().p)}\n\n✓ <b>저장했어요</b>${s.data().p.appt ? (who ? ` · 미팅을 ${esc(who.name)}님에게 배정${assigned === me.id ? '' : '하고 알렸어요'}` : '\n영업 담당이 정해지지 않았어요. 앱에서 정해 주세요.') : ''}\n${esc(appUrl('leads'))}`)
+    return edit(chat, mid, `${proposalText(s.data().p)}\n\n✓ <b>저장했어요</b>${s.data().p.appt ? (who ? ` · 미팅을 ${esc(who.name)}님에게 배정${assigned === me.id ? '' : '했어요 (브리핑에 들어가요)'}` : '\n영업 담당이 정해지지 않았어요. 앱에서 정해 주세요.') : ''}\n${esc(appUrl('leads'))}`)
   }
 
   if (kind === 'e') {
@@ -134,7 +137,7 @@ async function onButton(q) {
     await answer(q.id, status === 'approved' ? '승인했어요' : '반려했어요')
     const e = s.data()
     const owner = (await membersAll()).find((x) => x.id === e.uid)
-    if (owner?.tgChatId && owner.id !== me.id) await send(owner.tgChatId, `${status === 'approved' ? '✓ 승인' : '✕ 반려'} · ${esc(EXP_CAT[e.category]?.n || '기타')} ${won(e.amount)}원 (${esc(e.date)})`)
+    if (pushOn(await getSettings()) && owner?.tgChatId && owner.id !== me.id) await send(owner.tgChatId, `${status === 'approved' ? '✓ 승인' : '✕ 반려'} · ${esc(EXP_CAT[e.category]?.n || '기타')} ${won(e.amount)}원 (${esc(e.date)})`)
     return edit(chat, mid, `${q.message.text?.split('\n').slice(0, 3).map(esc).join('\n') || '비용'}\n\n${status === 'approved' ? '✓ <b>승인했어요</b>' : '✕ <b>반려했어요</b>'}`)
   }
 
@@ -147,7 +150,7 @@ async function onButton(q) {
     await serverAct(l, { type: 'ack', by: me.id, via: 'telegram', text: '미팅 확인했습니다' }, { apptAck: true })
     await notifyAck(l.id, me.id)
     await answer(q.id, '확인했어요')
-    return edit(chat, mid, `${esc(q.message.text || '')}\n\n✓ <b>확인했어요</b> (TM에게 알렸어요)`)
+    return edit(chat, mid, `${esc(q.message.text || '')}\n\n✓ <b>확인했어요</b>`)
   }
   return answer(q.id)
 }

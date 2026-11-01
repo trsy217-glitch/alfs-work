@@ -39,7 +39,13 @@ test('마케팅 초안: Gemini 먼저, 금지 표현을 표시', async () => {
   assert.equal(r.out.engine, 'Gemini Flash-Lite'); assert.equal(engines.at(-1), 'gemini')
   assert.ok(r.out.issues.some((i) => i.word === '디톡스'))
 })
-test('비용 승인 요청 알림은 본인 대기 건만', async () => {
+test('수시 알림을 끄면(기본) 승인 요청을 보내지 않음', async () => {
+  const n = sent.length
+  assert.equal((await call('s1', { action: 'notify', kind: 'expense', id: 'x' })).out.ok, false)
+  assert.equal(sent.length, n)
+})
+test('비용 승인 요청 알림은 본인 대기 건만 (수시 알림 켰을 때)', async () => {
+  await db.collection('settings').doc('main').set({ realtime: true })
   assert.equal((await call('boss', { action: 'notify', kind: 'expense', id: 'x' })).out.ok, false)
   const r = await call('s1', { action: 'notify', kind: 'expense', id: 'x' })
   assert.equal(r.out.ok, true); assert.equal(sent.at(-1).chat_id, 1)

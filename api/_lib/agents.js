@@ -1,8 +1,8 @@
 // 에이전트 7개의 실제 일 — 앱(api/app.js)·텔레그램(api/telegram.js)·예약 작업(api/cron.js)이 함께 씁니다.
-import { db, iso, list, logRun, serverAct, membersAll, getSettings, agentOn } from './admin.js'
+import { db, iso, list, logRun, serverAct, membersAll, getSettings, agentOn, pushOn } from './admin.js'
 import { ask, pickJson, hasAI } from './ai.js'
 import { send, esc, appUrl, brief } from './tg.js'
-import { EXP_CATS, EXP_CAT, CHANNEL, CATEGORIES, OPEN_STAGES, stageLabel } from '../../shared/constants.js'
+import { EXP_CATS, EXP_CAT, CHANNEL, CATEGORIES, OPEN_STAGES, stageLabel, salesOf } from '../../shared/constants.js'
 import { AD_GUIDE, checkAd } from '../../shared/adRules.js'
 import { kst, fmtWhen, won, addDays, dayLabel } from '../../shared/time.js'
 
@@ -40,6 +40,7 @@ export async function saveExpense(member, r, img, settings, memo = '') {
 
 /** 2만원 이상 → 대표에게 승인 버튼 */
 export async function askApproval(exp, who) {
+  if (!pushOn(await getSettings())) return false // 수시 알림 끔 → 브리핑에 모아서
   const admins = (await membersAll()).filter((m) => m.role === 'admin' && m.tgChatId)
   const c = EXP_CAT[exp.category]?.n || '기타'
   for (const a of admins) {
@@ -124,7 +125,7 @@ export async function applyProposal(p, member) {
   } else if (p.event === 'meeting') {
     const patch = { stage: p.appt ? 'met' : (lead.stage === 'booked' ? 'met' : lead.stage), appt: p.appt ? { ...p.appt, reminded: false } : null, prep: null }
     if (!lead.salesId) patch.salesId = member.id
-    await serverAct(lead, { ...entry, type: 'meet', count: (lead.meetings || 0) + 1, next: p.appt ? 'again' : '', nextLabel: p.appt ? '다시 미팅' : '', apptAt: p.appt?.at || null }, patch, { meetings: 1 })
+    await serverAct(lead, { ...entry, type: 'meet', count: (lead.meetings || 0) + 1, next: p.appt ? 'met' : '', nextLabel: p.appt ? '미팅 진행' : '', apptAt: p.appt?.at || null }, patch, { meetings: 1 })
   } else {
     await serverAct(lead, { ...entry, type: 'tg' })
   }
@@ -175,16 +176,25 @@ ${AD_GUIDE}
 async function member(id) { if (!id) return null; const s = await db().collection('members').doc(id).get(); return s.exists ? { id: s.id, ...s.data() } : null }
 
 export async function notifyBooking(leadId) {
+  if (!pushOn(await getSettings())) return false // 수시 알림 끔 → 브리핑에 모아서
   const s = await db().collection('leads').doc(leadId).get(); if (!s.exists) return false
   const l = { id: s.id, ...s.data() }
-  const to = await member(l.salesId); const by = await member(l.lastBy)
-  if (!to?.tgChatId || !l.appt) return false
-  await send(to.tgChatId, `<b>미팅 배정 · ${esc(l.name)}</b>\n${esc(fmtWhen(l.appt.at))}${l.appt.place ? ` · ${esc(l.appt.place)}` : ''}\n${esc([l.person, l.region, l.category].filter(Boolean).join(' · '))}\n잡은 사람 ${esc(by?.name || '팀원')}${l.lastText ? `\n\n${esc(l.lastText)}` : ''}`,
-    [[{ text: '확인했어요', data: `a:ack:${l.id}` }], [{ text: '고객 카드 열기', url: appUrl('leads') }]])
-  await logRun('scout', `미팅 배정 알림 · ${l.name}`, `${to.name}에게 ${fmtWhen(l.appt.at)} 미팅 배정`, { leadId })
-  return true
+  if (!l.appt) return false
+  const by = await member(l.lastBy)
+  const team = (await Promise.all(salesOf(l).map(member))).filter(Boolean)
+  const names = team.map((m) => m.name).join('·')
+  let sent = 0
+  for (const to of team) {
+    if (!to.tgChatId || to.id === l.lastBy) continue
+    await send(to.tgChatId, `<b>미팅 배정 · ${esc(l.name)}</b>\n${esc(fmtWhen(l.appt.at))}${l.appt.place ? ` · ${esc(l.appt.place)}` : ''}\n${esc([l.person, l.region, l.category].filter(Boolean).join(' · '))}\n영업 ${esc(names)} · 잡은 사람 ${esc(by?.name || '팀원')}${l.lastText ? `\n\n${esc(l.lastText)}` : ''}`,
+      [[{ text: '확인했어요', data: `a:ack:${l.id}` }], [{ text: '고객 카드 열기', url: appUrl('leads') }]])
+    sent++
+  }
+  if (sent) await logRun('scout', `미팅 배정 알림 · ${l.name}`, `${names}에게 ${fmtWhen(l.appt.at)} 미팅 배정`, { leadId })
+  return sent > 0
 }
 export async function notifyAck(leadId, byId) {
+  if (!pushOn(await getSettings())) return false // 수시 알림 끔 → 브리핑에 모아서
   const s = await db().collection('leads').doc(leadId).get(); if (!s.exists) return false
   const l = { id: s.id, ...s.data() }
   const pm = await member(l.tmId); const by = await member(byId)
@@ -193,6 +203,7 @@ export async function notifyAck(leadId, byId) {
   return true
 }
 export async function notifyContent(title) {
+  if (!pushOn(await getSettings())) return false // 수시 알림 끔 → 브리핑에 모아서
   const admins = (await membersAll()).filter((m) => m.role === 'admin' && m.tgChatId)
   for (const a of admins) await send(a.tgChatId, `<b>마케팅 글 승인 요청</b>\n${esc(title)}`, [[{ text: '앱에서 보기', url: appUrl('marketing') }]])
   return admins.length > 0

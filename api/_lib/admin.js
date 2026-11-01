@@ -47,7 +47,7 @@ export async function verifyUser(req) {
 export const list = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }))
 export async function getSettings() {
   const s = await db().collection('settings').doc('main').get()
-  return { approvalLimit: 20000, briefingTime: '08:30', agents: {}, ...(s.exists ? s.data() : {}) }
+  return { approvalLimit: 20000, briefingTime: '08:30', eveningTime: '17:00', briefDays: 'daily', realtime: false, agents: {}, ...(s.exists ? s.data() : {}) }
 }
 export const agentOn = (settings, k) => settings.agents?.[k]?.on !== false
 
@@ -74,3 +74,6 @@ export async function serverAct(lead, entry, patch = {}, counters = {}) {
 }
 
 export async function membersAll() { return list(await db().collection('members').get()) }
+
+/** 수시 알림(미팅 배정·승인 요청 등)을 바로 보낼지. 기본은 끔 — 하루 2번 브리핑에 모아서 (대표 결정 2026-11-01) */
+export const pushOn = (settings) => settings?.realtime === true

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AGENT } from '../../shared/constants.js'
 import { buildTasks, isMine } from '../../shared/work.js'
 import { daysBetween, dayLabel, fmtAgo, kst, todayStr } from '../../shared/time.js'
-import { DEPTS, AGENT_FACE, agentState, deptPeople } from '../org.js'
+import { DEPTS, AGENT_FACE, agentState } from '../org.js'
 
 /* 본사 — 알프스를 가운데 둔 나선형 조직도 + AI 팀 대기실 */
 export default function Hq({ ctx, runs }) {
@@ -33,7 +33,6 @@ export default function Hq({ ctx, runs }) {
   const geo = useMemo(() => (narrow ? helix(W, card, DEPTS.length) : spiral(W, Math.round(W * 0.62), card, DEPTS.length)), [W, narrow]) // eslint-disable-line react-hooks/exhaustive-deps
   const H = geo.H
 
-  const people = (d) => deptPeople(d, ctx.people)
   const live = DEPTS.map((d) => ({ d, s: agentState(d.agent, { settings, runs, leads: data.leads }) }))
   const working = live.filter((x) => x.s.st === 'working').length
   const myToday = tasks.filter((t) => isMine(t, ctx.user.id) && t.day <= today && !t.done).length
@@ -77,7 +76,6 @@ export default function Hq({ ctx, runs }) {
 
         {live.map(({ d, s }, i) => {
           const p = geo.nodes[i]
-          const ppl = people(d)
           const c = counts[d.k] || 0
           return (
             <button type="button" key={d.k} className={`dept ${d.later ? 'is-later' : ''}`} style={{ left: p.x, top: p.y, width: card.w }}
@@ -85,9 +83,6 @@ export default function Hq({ ctx, runs }) {
               <span className="dept-h"><b>{d.n}</b>{c > 0 && <i className="dept-n" title={label[d.k]}>{c}</i>}</span>
               <span className="dept-sub">{d.sub}</span>
               <span className="dept-team">
-                {ppl.slice(0, 3).map((m) => <span key={m.id} className="ava" title={`${m.name}${m.title ? ` ${m.title}` : ''}`}>{m.name.slice(-2)}</span>)}
-                {ppl.length > 3 && <span className="ava ava-more">+{ppl.length - 3}</span>}
-                {!ppl.length && !d.later && <span className="muted tiny">담당 미정</span>}
                 <span className={`bot-chip st-${s.st}`} title={`${AGENT[d.agent].n} 에이전트 · ${s.line}`}><em>{AGENT_FACE[d.agent]}</em><i /></span>
               </span>
             </button>

@@ -230,7 +230,7 @@ function AddSheet({ ctx, img, onClose, onSaved }) {
     try {
       const r = await addExpense(ctx.user, { date, month: date.slice(0, 7), amount, category, pay, memo: memo.trim().slice(0, 60) }, img || null, limit)
       if (r.status === 'pending') callAgent('notify', { kind: 'expense', id: r.id })
-      ctx.say(r.status === 'pending' ? '저장했어요. 대표 승인 요청을 보냈어요' : '저장했어요 · 자동 승인')
+      ctx.say(r.status === 'pending' ? '저장했어요. 대표 승인 대기 (대표 브리핑에 올라가요)' : '저장했어요 · 자동 승인')
       onSaved(r)
     } catch { setErr('저장하지 못했어요. 네트워크를 확인하고 다시 눌러 주세요.') } finally { setBusy(false) }
   }

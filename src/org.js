@@ -20,8 +20,8 @@ export const ENGINE = {
   finance: 'Claude Haiku', marketing: 'Gemini Flash-Lite', stock: '—',
 }
 export const SCHEDULE = {
-  secretary: '평일 08:30 브리핑 · 금 17:00 주간 리포트', scout: '텔레그램 메모가 올 때', sales: '미팅 1시간 전 · 미팅 결과 저장 때',
-  shop: '매일 10:00 재발주 알림', finance: '영수증이 올 때 · 말일 정산서', marketing: '화·목 09:00 초안', stock: '2차 개발',
+  secretary: '매일 아침·저녁 브리핑 (대표는 팀 리포트) · 금 저녁 주간 리포트', scout: '텔레그램 메모가 올 때', sales: '미팅 날 아침 브리핑에 준비 메모 · 미팅 결과 저장 때',
+  shop: '아침 브리핑에 재발주 3일 전부터', finance: '영수증이 올 때 · 말일 저녁 정산서', marketing: '화·목 09:00 초안', stock: '2차 개발',
 }
 
 // 상단 메뉴 (항상 보임)
@@ -46,10 +46,10 @@ export function agentState(k, { settings, runs = [], leads = [] }) {
   if (last && Date.now() - new Date(last.at) < 15 * 6e4) return { st: 'working', line: last.title }
   const n = kst()
   const next = {
-    secretary: n.dow >= 1 && n.dow <= 5 && n.hm < 510 ? '오늘 08:30 브리핑 준비' : n.dow === 5 && n.hm < 1020 ? '오늘 17:00 주간 리포트' : '다음 평일 08:30 브리핑',
+    secretary: (() => { const a = settings?.briefingTime || '08:30', p = settings?.eveningTime || '17:00'; const hm = (s) => { const [h, m] = s.split(':').map(Number); return h * 60 + m }; return n.hm < hm(a) ? `오늘 ${a} 아침 브리핑` : n.hm < hm(p) ? `오늘 ${p} 저녁 브리핑` : `내일 ${a} 아침 브리핑` })(),
     scout: '메모 기다리는 중',
     sales: (() => { const up = leads.filter((l) => OPEN_STAGES.includes(l.stage) && l.appt?.at && l.appt.at >= n.at).sort((a, b) => a.appt.at.localeCompare(b.appt.at))[0]; return up ? `${fmtWhen(up.appt.at)} 미팅 준비 대기` : '다음 미팅 기다리는 중' })(),
-    shop: (() => { const due = leads.filter((l) => l.stage === 'won' && l.partner?.nextReorder && daysBetween(n.date, l.partner.nextReorder) <= 3).length; return due ? `재발주 ${due}곳 확인 대기` : n.hm < 600 ? '오늘 10:00 재발주 확인' : '내일 10:00 재발주 확인' })(),
+    shop: (() => { const due = leads.filter((l) => l.stage === 'won' && l.partner?.nextReorder && daysBetween(n.date, l.partner.nextReorder) <= 3).length; return due ? `재발주 ${due}곳 · 아침 브리핑에 올림` : '재발주 때 기다리는 중' })(),
     finance: '영수증 기다리는 중',
     marketing: n.dow === 2 || n.dow === 4 ? (n.hm < 540 ? '오늘 09:00 초안 작성' : '다음 초안 화·목') : '다음 초안 화·목 09:00',
   }[k]

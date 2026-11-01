@@ -59,8 +59,8 @@ export default async function handler(req, res) {
         if (k === 'expense') {
           const s = await db().collection('expenses').doc(String(body.id)).get()
           if (!s.exists || s.data().uid !== who.uid || s.data().status !== 'pending') return res.json({ ok: false })
-          await askApproval({ id: s.id, ...s.data() }, who.member)
-          return res.json({ ok: true })
+          const sentNow = await askApproval({ id: s.id, ...s.data() }, who.member)
+          return res.json({ ok: sentNow !== false })
         }
         return res.status(400).json({ error: '알 수 없는 알림' })
       }

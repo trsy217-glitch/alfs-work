@@ -26,6 +26,7 @@ globalThis.fetch = async (url, opt = {}) => {
   throw new Error(`unexpected fetch ${url}`)
 }
 const db = fakeDb({
+  settings: { main: { realtime: true } }, // 앞쪽 테스트는 수시 알림을 켠 상태로
   members: {
     boss: { name: '이소영', role: 'admin', email: 'a@x', tgChatId: 100 },
     pm: { name: '이자원', role: 'tm', email: 'b@x', tgCode: '123456', tgCodeAt: new Date().toISOString() },
@@ -113,31 +114,57 @@ test('대표가 아니면 승인 버튼이 안 먹힘', async () => {
   assert.equal(sent.at(-1).text, '대표만 승인할 수 있어요')
 })
 
-test('예약 작업: 08:30 브리핑·미팅 1시간 전 알림·재발주 알림, 두 번 돌려도 한 번만', async () => {
+test('수시 알림 끔(기본): 미팅 배정·승인 요청을 바로 보내지 않음', async () => {
+  await db.collection('settings').doc('main').set({ realtime: false })
+  const { notifyBooking, askApproval } = await import('../api/_lib/agents.js')
+  const before = sent.length
+  assert.equal(await notifyBooking('pil'), false)
+  assert.equal(await askApproval({ id: 'z', amount: 50000, category: 'meal', date: '2026-10-29' }, { name: '황은경' }), false)
+  assert.equal(sent.length, before)
+})
+
+test('예약 작업: 08:30 아침 브리핑 (각자 이름, 대표는 팀 리포트), 두 번 돌려도 한 번만, 수시 알림 없음', async () => {
   const before = sent.length
   const now = kst(new Date('2026-10-28T23:31:00Z')) // 한국 10/29(목) 08:31
   const r1 = await runCron(now)
-  assert.ok(r1.done.includes('briefing'))
-  assert.ok(r1.done.some((d) => d.startsWith('reminder:상암 필라테스')))
-  const briefs = sent.slice(before).filter((m) => /브리핑/.test(m.text || ''))
-  assert.equal(briefs.length, 4) // 텔레그램 연결한 4명
-  const remind = sent.slice(before).find((m) => m.chat_id === 300 && /미팅 · 상암 필라테스/.test(m.text || ''))
-  assert.ok(remind); assert.match(remind.text, /샘플 2병/) // 준비 메모가 자동으로 만들어져 들어감
-  assert.equal(db.store.get('leads/pil').appt.reminded, true)
+  assert.ok(r1.done.some((d) => d.startsWith('morning:')))
+  const out = sent.slice(before).filter((m) => m.method === 'sendMessage')
+  const boss = out.filter((m) => m.chat_id === 100)
+  assert.equal(boss.length, 1); assert.match(boss[0].text, /팀 아침 리포트/); assert.match(boss[0].text, /황은경/); assert.match(boss[0].text, /김현수/)
+  const s1 = out.filter((m) => m.chat_id === 300)
+  assert.equal(s1.length, 1); assert.match(s1[0].text, /황은경님/); assert.match(s1[0].text, /상암 필라테스/)
+  assert.match(s1[0].text, /샘플 2병/) // 오늘 미팅 준비 메모가 자동으로 만들어져 아침 브리핑에 들어감
+  assert.ok(!out.some((m) => /분 뒤 미팅|재발주 때가 된 파트너샵 \d곳/.test(m.text || ''))) // 1시간 전·10시 재발주 같은 수시 알림 없음
   const r2 = await runCron(now)
   assert.equal(r2.done.length, 0)
-  const later = kst(new Date('2026-10-29T01:05:00Z')) // 10:05
-  const r3 = await runCron(later)
-  assert.ok(r3.done.includes('reorder:1'))
-  assert.match(last(400).text, /재발주 때가 된 파트너샵 1곳/)
-  assert.equal(db.store.get('leads/shop').partner.notifiedFor, '2026-10-30')
-  assert.ok(db.all('agentRuns').some((r) => r.agent === 'secretary'))
+  const r3 = await runCron(kst(new Date('2026-10-29T01:05:00Z'))) // 10:05 — 보낼 것 없음
+  assert.ok(!r3.done.some((d) => d.startsWith('morning') || d.startsWith('reorder')))
+  assert.ok(db.all('agentRuns').some((r) => r.agent === 'secretary' && /아침 브리핑/.test(r.title)))
 })
 
-test('금요일 17시 주간 리포트는 대표에게만', async () => {
+test('17:00 저녁 브리핑: 각자 오늘 정리·내일 일정, 대표는 팀 저녁 리포트', async () => {
   const before = sent.length
-  const r = await runCron(kst(new Date('2026-10-30T08:05:00Z')))
-  assert.ok(r.done.includes('weekly'))
+  const r = await runCron(kst(new Date('2026-10-29T08:05:00Z'))) // 10/29(목) 17:05
+  assert.ok(r.done.some((d) => d.startsWith('evening:')))
+  const out = sent.slice(before)
+  assert.match(out.find((m) => m.chat_id === 300).text, /황은경님, .* 저녁 정리/)
+  assert.match(out.find((m) => m.chat_id === 100).text, /팀 저녁 리포트/)
+  assert.ok(!out.find((m) => m.chat_id === 100).text.includes('주간 리포트'))
+})
+
+test('금요일 저녁 리포트에는 주간 리포트가 붙고 대표에게만', async () => {
+  const before = sent.length
+  await runCron(kst(new Date('2026-10-29T23:40:00Z'))) // 금 08:40 아침
+  const r = await runCron(kst(new Date('2026-10-30T08:05:00Z'))) // 금 17:05
+  assert.ok(r.done.some((d) => d.startsWith('evening:')))
   const w = sent.slice(before).filter((m) => /주간 리포트/.test(m.text || ''))
   assert.equal(w.length, 1); assert.equal(w[0].chat_id, 100)
+})
+
+test('텔레그램: 오늘·저녁·리포트 요청에는 언제든 답함', async () => {
+  const before = sent.length
+  await call({ message: { chat: { id: 300 }, text: '저녁' } })
+  assert.match(sent.slice(before).at(-1).text, /저녁 정리/)
+  await call({ message: { chat: { id: 100 }, text: '리포트' } })
+  assert.match(sent.at(-1).text, /팀 .* 리포트/)
 })

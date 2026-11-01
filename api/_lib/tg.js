@@ -15,12 +15,23 @@ async function call(method, body) {
 }
 
 /** buttons: [[{text, data}|{text, url}]] */
-export function send(chatId, html, buttons) {
-  if (!chatId) return Promise.resolve({ ok: false })
-  return call('sendMessage', {
-    chat_id: chatId, text: html.slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true,
-    ...(buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data }))) } } : {}),
-  })
+export async function send(chatId, html, buttons) {
+  if (!chatId) return { ok: false }
+  const markup = buttons ? { reply_markup: { inline_keyboard: buttons.map((row) => row.map((b) => (b.url ? { text: b.text, url: b.url } : { text: b.text, callback_data: b.data }))) } } : {}
+  const long = html.length > 3900
+  const r = await call('sendMessage', { chat_id: chatId, text: long ? cut(html) : html, parse_mode: 'HTML', disable_web_page_preview: true, ...markup })
+  // 서식(HTML) 때문에 실패하면 글자만으로 다시 보냄 — 브리핑이 통째로 빠지지 않게
+  if (!r.ok && /entit|parse|tag/i.test(r.description || '')) {
+    return call('sendMessage', { chat_id: chatId, text: plain(html).slice(0, 4000), disable_web_page_preview: true, ...markup })
+  }
+  return r
+}
+const plain = (h) => String(h).replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
+/** 긴 글은 줄 단위로 잘라 열린 태그가 남지 않게 */
+function cut(h) {
+  const lines = String(h).split('\n'); let out = ''
+  for (const l of lines) { if ((out + l).length > 3800) break; out += (out ? '\n' : '') + l }
+  return `${out}\n… (나머지는 앱에서)`
 }
 export const edit = (chatId, messageId, html) => call('editMessageText', { chat_id: chatId, message_id: messageId, text: html.slice(0, 4000), parse_mode: 'HTML', disable_web_page_preview: true })
 export const answer = (id, text) => call('answerCallbackQuery', { callback_query_id: id, ...(text ? { text } : {}) })
@@ -40,5 +51,5 @@ export async function download(fileId) {
 
 /** 브리핑 같은 {title, sections} 을 텔레그램 글로 */
 export function brief(b, footer) {
-  return [`<b>${esc(b.title)}</b>`, ...b.sections.map((s) => `\n<b>■ ${esc(s.h)}</b>\n${s.items.map((i) => `· ${esc(i)}`).join('\n')}`), footer ? `\n${footer}` : ''].join('\n').trim()
+  return [`<b>${esc(b.title)}</b>`, ...b.sections.map((s) => `\n<b>■ ${esc(s.h)}</b>${s.items.length ? `\n${s.items.map((i) => `· ${esc(i)}`).join('\n')}` : ''}`), footer ? `\n${footer}` : ''].join('\n').trim()
 }

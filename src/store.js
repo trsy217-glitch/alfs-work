@@ -11,6 +11,7 @@
 //   receipts/{id}           영수증 사진 { img } (작게 줄인 JPEG)
 //   contents/{id}           마케팅 글 { channel, title, body, date, status, by, byAgent }
 //   agentRuns/{id}          에이전트가 한 일 (서버만 씀)
+//   yt/{id}                 유튜브 스튜디오 보관함 { kind: analysis|plan|channel|omni, title, by, at, data }
 //   settings/main           { approvalLimit, briefingTime, agents:{k:{on}} }
 // 체험 모드(Firebase 값이 없을 때): 이 브라우저 localStorage 에만 저장, 빈 상태로 시작
 import {
@@ -28,7 +29,7 @@ export const demo = isDemoMode
 // ── 체험 모드 저장소 ──
 const KEY = 'alfs_work_demo_v2'
 const listeners = new Set()
-const seed = () => ({ leads: {}, logs: {}, members: {}, invites: {}, activity: [], events: {}, expenses: {}, drives: {}, receipts: {}, contents: {}, agentRuns: [], settings: {} })
+const seed = () => ({ leads: {}, logs: {}, members: {}, invites: {}, activity: [], events: {}, expenses: {}, drives: {}, yt: {}, receipts: {}, contents: {}, agentRuns: [], settings: {} })
 const load = () => ({ ...seed(), ...(ls.get(KEY) || {}) })
 const save = (s) => { ls.set(KEY, s); listeners.forEach((f) => f()) }
 const sub = (f) => { listeners.add(f); f(); return () => listeners.delete(f) }
@@ -156,6 +157,11 @@ export async function deleteLead(lead) {
   if (demo) { const s = load(); delete s.leads[lead.id]; delete s.logs[lead.id]; save(s); return }
   await deleteDoc(doc(db, 'leads', lead.id))
 }
+/** 기록 한 건 지우기 (쓴 사람 또는 대표) */
+export async function deleteLog(lead, log) {
+  if (demo) { const s = load(); s.logs[lead.id] = (s.logs[lead.id] || []).filter((g) => g.id !== log.id); save(s); return }
+  await deleteDoc(doc(db, 'leads', lead.id, 'logs', log.id))
+}
 export async function setCheck(user, lead, key, on, info) {
   const path = `checks.${key}`
   if (on) return act(user, lead, { type: 'check', ...info }, { [path]: { by: user.id, at: iso() } })
@@ -258,7 +264,7 @@ export function watchAgentRuns(cb, n = 60) {
   return snap(query(collection(db, 'agentRuns'), orderBy('at', 'desc'), limit(n)), cb)
 }
 export function watchSettings(cb) {
-  const fill = (v = {}) => ({ approvalLimit: DEFAULT_APPROVAL_LIMIT, briefingTime: '08:30', agents: {}, ...v })
+  const fill = (v = {}) => ({ approvalLimit: DEFAULT_APPROVAL_LIMIT, briefingTime: '08:30', eveningTime: '17:00', briefDays: 'daily', realtime: false, agents: {}, ...v })
   if (demo) return sub(() => cb(fill(load().settings)))
   return onSnapshot(doc(db, 'settings', 'main'), (d) => cb(fill(d.exists() ? d.data() : {})), () => cb(fill()))
 }
@@ -269,6 +275,34 @@ export async function saveSettings(patch) {
 
 // ── 서버(에이전트) 호출 ──
 // 체험 모드나 서버 미연결이면 { offline: true } 를 돌려줍니다 → 화면이 알아서 안내
+// ── 유튜브 스튜디오 ──
+export function watchYt(cb) {
+  if (demo) return sub(() => cb(Object.values(load().yt || {}).sort((a, b) => b.at.localeCompare(a.at))))
+  return snap(query(collection(db, 'yt'), orderBy('at', 'desc'), limit(200)), cb)
+}
+export async function saveYt(user, kind, title, data, id) {
+  const key = id || newId()
+  const row = { kind, title: String(title || '').slice(0, 120), by: user.id, at: iso(), data: JSON.parse(JSON.stringify(data)) }
+  if (demo) { const s = load(); (s.yt ||= {})[key] = { id: key, ...row }; save(s); return key }
+  await setDoc(doc(db, 'yt', key), row)
+  return key
+}
+export async function deleteYt(item) {
+  if (demo) { const s = load(); delete (s.yt || {})[item.id]; save(s); return }
+  await deleteDoc(doc(db, 'yt', item.id))
+}
+export async function callYt(action, payload = {}) {
+  if (demo) return { offline: true, reason: '체험 모드에서는 AI가 돌지 않아요. 실제 주소(work.alfs.kr)에서 써 주세요.' }
+  try {
+    const token = await auth.currentUser?.getIdToken()
+    const r = await fetch('/api/youtube', { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` }, body: JSON.stringify({ action, ...payload }) })
+    const j = await r.json().catch(() => ({}))
+    if (r.status === 501) return { offline: true, reason: j.error || '서버 설정이 아직 끝나지 않았어요.' }
+    if (!r.ok) return { error: j.error || (r.status === 504 ? '시간이 너무 오래 걸렸어요. 더 짧은 영상이나 적은 씬으로 다시 해 보세요.' : 'AI가 답하지 못했어요. 다시 눌러 주세요.') }
+    return j
+  } catch { return { error: '네트워크가 불안정해요. 다시 눌러 주세요.' } }
+}
+
 export async function callAgent(action, payload = {}) {
   if (demo) return { offline: true, reason: '체험 모드에서는 AI 에이전트가 돌지 않아요. Firebase와 서버 설정 후 동작합니다.' }
   try {
