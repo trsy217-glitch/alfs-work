@@ -16,7 +16,7 @@ export default function Marketing({ ctx }) {
     <div className="stack">
       <div className="seg seg-2 seg-top">
         <button type="button" aria-pressed={view === 'cal'} onClick={() => pick('cal')}>콘텐츠 달력</button>
-        <button type="button" aria-pressed={view === 'yt'} onClick={() => pick('yt')}>유튜브 분석 및 SNS 콘텐츠 생성 스튜디오</button>
+        <button type="button" aria-pressed={view === 'yt'} className="seg-strong" onClick={() => pick('yt')}>유튜브 분석 및 SNS 콘텐츠 생성 스튜디오</button>
       </div>
       {view === 'cal' ? <Calendar ctx={ctx} /> : <YouTubeStudio ctx={ctx} />}
     </div>
