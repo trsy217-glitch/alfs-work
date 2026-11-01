@@ -108,6 +108,9 @@ export default function Hq({ ctx, runs }) {
           ))}
         </div>
       </section>
+      <footer className="hq-foot">
+        <a href="https://alfs.kr" target="_blank" rel="noopener noreferrer">alfs.kr ↗</a>
+      </footer>
     </div>
   )
 }

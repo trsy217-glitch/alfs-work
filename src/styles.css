@@ -663,3 +663,16 @@ a.btn-mini { text-decoration: none; }
 .yt .btn-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .yt .btn-row > * { flex: none; width: auto; }
 .yt-card > .btn-mini, .yt .panel-box > .btn-mini, .yt-post > .btn-mini, .yt details .btn-mini, .yt .list > .btn-mini { justify-self: start; }
+.yt-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 6px; }
+.yt-check { display: grid; grid-template-columns: auto 1fr; gap: 0 7px; align-items: center; border: 1.5px solid var(--line); border-radius: var(--r-md); padding: 8px 10px; background: var(--surface); cursor: pointer; }
+.yt-check input { grid-row: 1 / 3; }
+.yt-check b { font-size: 13.5px; }
+.yt-check small { font-size: 11.5px; color: var(--ink2); }
+.yt-check.on { border-color: var(--blue); background: var(--blue-soft); }
+.yt-slides { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13px; }
+.yt-slides li span { display: block; color: var(--ink2); }
+
+/* 본사 하단 웹사이트 링크 */
+.hq-foot{display:flex;justify-content:center;padding:18px 0 8px}
+.hq-foot a{color:var(--ink2);font-size:13px;text-decoration:none;padding:6px 14px;border:1px solid var(--line);background:var(--surface);border-radius:999px;opacity:.8}
+.hq-foot a:hover{opacity:1}
