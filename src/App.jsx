@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AuthProvider, useAuth, inAppBrowser, openInExternalBrowser } from './auth.jsx'
 import {
-  demo, watchMyMember, watchMembers, requestJoin, claimInvite, watchLeads, watchEvents, watchActivity, watchExpenses, watchContents, watchSettings, watchAgentRuns,
+  demo, watchMyMember, watchMembers, requestJoin, claimInvite, watchLeads, watchEvents, watchActivity, watchExpenses, watchContents, watchSettings, watchAgentRuns, setMember,
 } from './store.js'
 import { ROLES, OPEN_STAGES, AGENT, salesOf } from '../shared/constants.js'
 import { TABS, DEPT, AGENT_FACE, agentState, deptPeople } from './org.js'
@@ -121,7 +121,10 @@ function Main({ user, me, onOut }) {
   const screen = useRef(null)
   const tabsRef = useRef(null)
   const say = (m) => { setToast(m); clearTimeout(t.current); t.current = setTimeout(() => setToast(''), 2400) }
-  const isAdmin = me.role === 'admin'
+  // 대표 계정(config.js)은 언제나 대표 — 역할이 잘못 들어가 있으면 바로 고침
+  const owner = ADMIN_EMAILS.includes(String(user.email || '').toLowerCase())
+  const isAdmin = me.role === 'admin' || owner
+  useEffect(() => { if (owner && me.role !== 'admin') setMember(user.id, { role: 'admin' }).catch(() => {}) }, [owner, me.role, user.id])
 
   useEffect(() => watchLeads(setLeads, () => setErr('고객 목록을 불러오지 못했어요. 승인된 계정인지, Firestore 규칙이 게시됐는지 확인해 주세요.')), [])
   useEffect(() => watchMembers(setMembers), [])
@@ -197,6 +200,7 @@ function Main({ user, me, onOut }) {
               {n.n}{badges[n.k] > 0 && <i className="badge">{badges[n.k]}</i>}
             </button>
           ))}
+          <a className="hdr-link" href="https://alfs.kr" target="_blank" rel="noopener noreferrer">alfs.kr ↗</a>
         </nav>
       </header>
 
