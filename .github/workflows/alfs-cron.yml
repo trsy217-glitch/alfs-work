@@ -1,0 +1,18 @@
+# 알프스 워크 예약 작업 — 15분마다 /api/cron 을 부릅니다 (무료)
+# GitHub 저장소 → Settings → Secrets and variables → Actions 에 두 값을 넣으세요.
+#   APP_URL      예: https://work.alfs.kr   (끝에 / 없이)
+#   CRON_SECRET  Vercel 환경 변수 CRON_SECRET 과 같은 값
+# GitHub 예약 작업은 붐빌 때 몇 분 늦게 돌 수 있어요. 미팅 알림은 75분 전부터 잡아서 늦어도 빠지지 않습니다.
+name: alfs-cron
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch: {}
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: call /api/cron
+        run: |
+          curl -fsS --max-time 90 -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "${{ secrets.APP_URL }}/api/cron"
