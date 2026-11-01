@@ -60,3 +60,16 @@ test('광고 문구 검사', () => {
   assert.ok(checkAd('국무총리상 수상 제품').some((i) => i.word === '수상·특허'))
   assert.equal(checkAd('제조사 유디아미네랄의 국무총리상').length, 0)
 })
+
+import { toTubeInsight } from '../shared/tubeinsight.js'
+test('TubeInsight 내보내기 형식', () => {
+  const t = toTubeInsight({ topic: '물: 비밀?', aspect: '9:16', secs: 15, meta: { titles: [], recommended: { title: 'T' }, description: { summary: 's', hashtags: ['#a'] } },
+    scenes: [{ scene_num: 1, narration: '하나', video_prompt: 'v. Camera: c', image_prompt: { scene: {} } }, { scene_num: 2, narration: '둘' }] }, new Date(2026, 10, 2, 9, 5, 7))
+  assert.equal(t.fileName, '물_ 비밀__20261102-090507.json')
+  assert.equal(t.plan.plan_id + '.json', t.fileName)
+  assert.equal(t.plan.structured_scenes[1].time_range, '00:15 ~ 00:30')
+  assert.equal(t.plan.structured_scenes[0].visual_prompt, 'v.')
+  assert.equal(t.plan.structured_scenes[1].image_prompt_ok, false)
+  assert.ok(t.plan.full_document.includes('하나'))
+  assert.equal(t.plan.meta.titles[0].title, 'T')
+})

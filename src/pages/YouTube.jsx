@@ -3,6 +3,7 @@ import { callYt, deleteYt, saveContent, saveYt, watchYt } from '../store.js'
 import { checkAd } from '../../shared/adRules.js'
 import { addDays, fmtAgo, todayStr } from '../../shared/time.js'
 import { Chips, Empty, Group } from '../ui.jsx'
+import { toTubeInsight } from '../../shared/tubeinsight.js'
 
 /* 마케팅 > 유튜브 스튜디오 — TubeInsight 를 알프스 워크 안으로
    ① 영상 분석 ② 기획·나레이션 ③ 채널 세팅 ④ SNS 원소스 + 보관함 */
@@ -10,10 +11,10 @@ const TABS = [
   { k: 'analyze', n: '① 영상 분석' },
   { k: 'plan', n: '② 기획·나레이션' },
   { k: 'channel', n: '③ 채널 세팅' },
-  { k: 'omni', n: '④ SNS 원소스' },
+  { k: 'omni', n: '④ SNS·블로그·뉴스레터' },
   { k: 'saved', n: '보관함' },
 ]
-const KIND = { analysis: '영상 분석', plan: '기획서', channel: '채널 세팅', omni: 'SNS 원소스' }
+const KIND = { analysis: '영상 분석', plan: '기획서', channel: '채널 세팅', omni: 'SNS·블로그·뉴스레터' }
 const LANGS = [['ko', '한국어'], ['en', 'English'], ['ja', '日本語'], ['zh-TW', '繁體中文'], ['zh-CN', '简体中文'], ['vi', 'Tiếng Việt'], ['es', 'Español']]
 
 export default function YouTubeStudio({ ctx }) {
@@ -292,6 +293,7 @@ function PlanView({ plan, setPlan, planId, ctx, onNew }) {
         <button type="button" className="btn-ghost" onClick={() => download(`${safeName(m.recommended.title)}_기획서.md`, planMd(plan), 'text/markdown')}>기획서 .md</button>
         <button type="button" className="btn-ghost" onClick={() => download(`${safeName(m.recommended.title)}_자막.srt`, planSrt(plan), 'text/plain')}>자막 .srt</button>
         <button type="button" className="btn-ghost" onClick={() => download(`${safeName(m.recommended.title)}.json`, JSON.stringify(plan, null, 2), 'application/json')}>.json</button>
+        <button type="button" className="btn-primary sm" onClick={() => { const t = toTubeInsight(plan); download(t.fileName, JSON.stringify(t.plan, null, 2), 'application/json'); ctx.say('TubeInsight 폴더의 data\\plans\\ 에 넣어 주세요') }}>TubeInsight용 내보내기</button>
       </div>
       <Group title="제목 후보">
         <div className="list">{m.titles.map((t) => (
@@ -335,7 +337,7 @@ function PlanView({ plan, setPlan, planId, ctx, onNew }) {
           })}
         </div>
       </Group>
-      <p className="muted small">나레이션 MP3·영상 합성·유튜브 업로드는 PC의 TubeInsight 앱에서 해요. 여기서 받은 .json·.srt를 그대로 쓰면 됩니다. '듣기'는 휴대폰·PC 기본 음성으로 읽어 길이를 확인하는 용도예요.</p>
+      <p className="muted small">나레이션 MP3·영상 합성·유튜브 업로드는 PC의 TubeInsight 앱에서 해요. 'TubeInsight용 내보내기'로 받은 파일을 TubeInsight 폴더의 <b>data\plans\</b> 에 넣고 TubeInsight를 새로고침하면 ③ 탭 기획 목록에 나와요. '듣기'는 휴대폰·PC 기본 음성으로 읽어 길이를 확인하는 용도예요.</p>
     </div>
   )
 }
@@ -413,12 +415,19 @@ function ChannelView({ c, id, ctx, onNew }) {
 }
 
 /* ── ④ SNS 원소스 ── */
+const OMNI = [
+  { k: 'threads', n: '스레드', cal: 'threads', d: '연속 글(타래)' },
+  { k: 'x', n: 'X(트위터)', cal: 'threads', d: '짧은 연속 글' },
+  { k: 'instagram', n: '인스타그램', cal: 'instagram', d: '캡션·카드뉴스·해시태그·릴스 훅' },
+  { k: 'blog', n: 'SEO 블로그', cal: 'blog', d: '검색 노출용 장문' },
+  { k: 'newsletter', n: '이메일 뉴스레터', cal: 'newsletter', d: '제목 A/B·본문' },
+]
 function Omni({ ctx, items, seed }) {
   const [src, setSrc] = useState('')
   const [topic, setTopic] = useState(seed?.topic || '')
   const [context, setContext] = useState(seed?.context || '')
   const [audience, setAudience] = useState('')
-  const [platform, setPlatform] = useState('threads')
+  const [channels, setChannels] = useState(['threads', 'instagram', 'blog', 'newsletter'])
   const [count, setCount] = useState(5)
   const [res, setRes] = useState(seed?.omni || null)
   const r = useRun(ctx)
@@ -428,12 +437,14 @@ function Omni({ ctx, items, seed }) {
     if (it.kind === 'analysis') { setTopic(it.data.info?.title || it.title); setContext(`${it.data.core_message}\n\n${it.data.report_md}`) }
     else { setTopic(it.data.meta.recommended.title); setContext(it.data.scenes.map((s) => s.narration).join('\n')) }
   }
-  const start = () => r.run('스레드·블로그·뉴스레터를 한 번에 쓰는 중… (20~40초)', async () => {
-    const o = await r.call('omni', { topic, context, audience, platform, count })
+  const toggle = (k) => setChannels((c) => (c.includes(k) ? c.filter((x) => x !== k) : [...c, k]))
+  const start = () => r.run(`${channels.length}개 채널 글을 한 번에 쓰는 중… (20~40초)`, async () => {
+    const o = await r.call('omni', { topic, context, audience, count, channels })
     setRes(o); await saveYt(ctx.user, 'omni', topic, o)
-    ctx.say('SNS 원소스를 보관함에 저장했어요')
+    ctx.say('보관함에 저장했어요')
   })
   if (res) return <OmniView o={res} ctx={ctx} onNew={() => setRes(null)} />
+  const hasThread = channels.includes('threads') || channels.includes('x')
   return (
     <div className="panel-box">
       <label className="field"><span>재료 가져오기 (선택)</span>
@@ -445,52 +456,84 @@ function Omni({ ctx, items, seed }) {
       <label className="field"><span>주제</span><input className="inp" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="예: 미네랄 카페 레시피 신메뉴" /></label>
       <label className="field"><span>참고 내용 (영상 대본·분석·메모)</span><textarea className="inp memo" rows={5} value={context} maxLength={4000} onChange={(e) => setContext(e.target.value)} /></label>
       <label className="field"><span>타깃 독자 (선택)</span><input className="inp" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="예: 카페 사장님, 건강 관심 40~60대" /></label>
-      <div className="row2">
-        <div className="field"><span>타래 형식</span><Chips items={[{ k: 'threads', n: '스레드' }, { k: 'twitter', n: 'X(트위터)' }]} value={platform} onChange={setPlatform} /></div>
-        <div className="field"><span>타래 개수</span><Chips items={[3, 5, 7, 10].map((n) => ({ k: n, n: `${n}개` }))} value={count} onChange={setCount} /></div>
+      <div className="field"><span>만들 채널 (여러 개 고르기)</span>
+        <div className="yt-checks">{OMNI.map((c) => (
+          <label key={c.k} className={`yt-check ${channels.includes(c.k) ? 'on' : ''}`}><input type="checkbox" checked={channels.includes(c.k)} onChange={() => toggle(c.k)} /><b>{c.n}</b><small>{c.d}</small></label>
+        ))}</div>
       </div>
-      <button type="button" className="btn-primary" disabled={!!r.busy || !topic.trim()} onClick={start}>원클릭 3채널 생성</button>
-      <p className="muted small">스레드/X 타래 · SEO 블로그 · 이메일 뉴스레터를 한 번에 만들고, 건강식품 광고 기준(효능·질병 표현 금지)을 자동 검사해요. 마음에 드는 글은 마케팅 달력에 초안으로 넣으면 승인 절차를 거쳐 발행돼요.</p>
+      {hasThread && <div className="field"><span>스레드·X 연속 글 개수 (1/5, 2/5 … 처럼 이어지는 글)</span><Chips items={[3, 5, 7, 10].map((n) => ({ k: n, n: `${n}개` }))} value={count} onChange={setCount} /></div>}
+      <button type="button" className="btn-primary" disabled={!!r.busy || !topic.trim() || !channels.length} onClick={start}>고른 채널 한 번에 만들기</button>
+      <p className="muted small">하나의 재료로 여러 채널 글을 동시에 만들고, 건강식품 광고 기준(효능·질병 표현 금지)을 자동 검사해요. 마음에 드는 글은 마케팅 달력에 초안으로 넣으면 승인 절차를 거쳐 발행돼요.</p>
       <Busy text={r.busy} /><Err text={r.err} />
     </div>
   )
 }
 
 function OmniView({ o, ctx, onNew }) {
-  const t = o.thread || {}, b = o.blog || {}, n = o.newsletter || {}
-  const threadText = (t.posts || []).map((p) => p.text).join('\n\n') + (t.hashtags?.length ? `\n\n${t.hashtags.join(' ')}` : '')
   const toCal = async (channel, title, body) => { await saveContent(ctx.user, { channel, title, body, date: addDays(todayStr(), 2), status: 'draft' }); ctx.say('마케팅 달력에 초안으로 넣었어요') }
-  return (
-    <div className="stack">
-      <div className="yt-bar"><button type="button" className="btn-ghost" onClick={onNew}>＋ 새로 만들기</button><span className="grow" /><b className="small">{o.topic}</b></div>
-      {o.adIssues?.length > 0 && <p className="card-warn">광고 기준에 걸리는 표현 {o.adIssues.length}개: {o.adIssues.map((i) => i.word).join(', ')} — 달력에 넣은 뒤 고쳐 주세요</p>}
-      <Group title={`스레드·X 타래${t.hook_formula ? ` · ${t.hook_formula}` : ''}`} action={<Copy ctx={ctx} text={threadText} label="전체 복사" />}>
+  // 예전 저장본(thread/blog/newsletter) 호환
+  const threads = o.threads || o.thread
+  const Thread = ({ t, label }) => {
+    const text = (t.posts || []).map((p) => p.text).join('\n\n') + (t.hashtags?.length ? `\n\n${t.hashtags.join(' ')}` : '')
+    return (
+      <Group title={`${label}${t.hook_formula ? ` · ${t.hook_formula}` : ''}`} action={<Copy ctx={ctx} text={text} label="전체 복사" />}>
         {t.error ? <p className="err">{t.error}</p> : (
           <div className="list">{(t.posts || []).map((p) => (
             <div key={p.index} className="yt-post"><span className="muted small">{p.index}/{t.posts.length} · {p.role} · {p.text.length}자</span><pre className="yt-pre">{p.text}</pre><Copy ctx={ctx} text={p.text} /></div>
           ))}
-            <button type="button" className="btn-mini" onClick={() => toCal('threads', `[스레드] ${o.topic}`, threadText)}>마케팅 달력에 초안으로 넣기</button>
+            <button type="button" className="btn-mini" onClick={() => toCal('threads', `[${label}] ${o.topic}`, text)}>마케팅 달력에 초안으로 넣기</button>
           </div>
         )}
       </Group>
-      <Group title={`SEO 블로그${b.seo_title ? ` · ${b.seo_title}` : ''}`} action={<Copy ctx={ctx} text={b.body_md} label="본문 복사" />}>
-        {b.error ? <p className="err">{b.error}</p> : (
-          <div className="panel-box">
-            <dl className="kv"><dt>제목</dt><dd>{b.seo_title}</dd><dt>메타 설명</dt><dd>{b.meta_description}</dd><dt>키워드</dt><dd>{(b.keywords || []).join(', ')}</dd></dl>
-            <Md text={b.body_md} />
-            <button type="button" className="btn-mini" onClick={() => toCal('blog', b.seo_title || o.topic, b.body_md)}>마케팅 달력에 초안으로 넣기</button>
-          </div>
-        )}
-      </Group>
-      <Group title="이메일 뉴스레터" action={<Copy ctx={ctx} text={n.body_md} label="본문 복사" />}>
-        {n.error ? <p className="err">{n.error}</p> : (
-          <div className="panel-box">
-            <dl className="kv"><dt>제목 A</dt><dd>{n.subject_a}</dd><dt>제목 B</dt><dd>{n.subject_b}</dd><dt>미리보기</dt><dd>{n.preheader}</dd><dt>버튼</dt><dd>{n.cta}</dd></dl>
-            <Md text={n.body_md} />
-            <button type="button" className="btn-mini" onClick={() => toCal('newsletter', n.subject_a || o.topic, n.body_md)}>마케팅 달력에 초안으로 넣기</button>
-          </div>
-        )}
-      </Group>
+    )
+  }
+  const ig = o.instagram, b = o.blog, n = o.newsletter
+  const igText = ig && !ig.error ? `${ig.caption}\n\n${(ig.hashtags || []).join(' ')}` : ''
+  return (
+    <div className="stack">
+      <div className="yt-bar"><button type="button" className="btn-ghost" onClick={onNew}>＋ 새로 만들기</button><span className="grow" /><b className="small">{o.topic}</b></div>
+      {o.adIssues?.length > 0 && <p className="card-warn">광고 기준에 걸리는 표현 {o.adIssues.length}개: {o.adIssues.map((i) => i.word).join(', ')} — 달력에 넣은 뒤 고쳐 주세요</p>}
+      {threads && <Thread t={threads} label="스레드" />}
+      {o.x && <Thread t={o.x} label="X(트위터)" />}
+      {ig && (
+        <Group title="인스타그램" action={<Copy ctx={ctx} text={igText} label="캡션+해시태그 복사" />}>
+          {ig.error ? <p className="err">{ig.error}</p> : (
+            <div className="panel-box">
+              <pre className="yt-pre">{ig.caption}</pre>
+              <p className="yt-tags">{(ig.hashtags || []).map((h) => <span key={h}>{h}</span>)}</p>
+              {ig.slides?.length > 0 && <>
+                <b className="small">카드뉴스 {ig.slides.length}장</b>
+                <ol className="yt-slides">{ig.slides.map((sl, i) => <li key={i}><b>{sl.title}</b><span>{sl.body}</span></li>)}</ol>
+                <Copy ctx={ctx} text={ig.slides.map((sl, i) => `${i + 1}. ${sl.title}\n${sl.body}`).join('\n\n')} label="카드뉴스 문구 복사" />
+              </>}
+              {ig.reels_hook && <details><summary>릴스로 만들 때</summary><p><b>첫 3초:</b> {ig.reels_hook}</p><pre className="yt-pre">{(ig.reels_lines || []).join('\n')}</pre></details>}
+              <button type="button" className="btn-mini" onClick={() => toCal('instagram', `[인스타] ${o.topic}`, `${igText}\n\n[카드뉴스]\n${(ig.slides || []).map((sl, i) => `${i + 1}. ${sl.title} — ${sl.body}`).join('\n')}`)}>마케팅 달력에 초안으로 넣기</button>
+            </div>
+          )}
+        </Group>
+      )}
+      {b && (
+        <Group title={`SEO 블로그${b.seo_title ? ` · ${b.seo_title}` : ''}`} action={<Copy ctx={ctx} text={b.body_md} label="본문 복사" />}>
+          {b.error ? <p className="err">{b.error}</p> : (
+            <div className="panel-box">
+              <dl className="kv"><dt>제목</dt><dd>{b.seo_title}</dd><dt>메타 설명</dt><dd>{b.meta_description}</dd><dt>키워드</dt><dd>{(b.keywords || []).join(', ')}</dd></dl>
+              <Md text={b.body_md} />
+              <button type="button" className="btn-mini" onClick={() => toCal('blog', b.seo_title || o.topic, b.body_md)}>마케팅 달력에 초안으로 넣기</button>
+            </div>
+          )}
+        </Group>
+      )}
+      {n && (
+        <Group title="이메일 뉴스레터" action={<Copy ctx={ctx} text={n.body_md} label="본문 복사" />}>
+          {n.error ? <p className="err">{n.error}</p> : (
+            <div className="panel-box">
+              <dl className="kv"><dt>제목 A</dt><dd>{n.subject_a}</dd><dt>제목 B</dt><dd>{n.subject_b}</dd><dt>미리보기</dt><dd>{n.preheader}</dd><dt>버튼</dt><dd>{n.cta}</dd></dl>
+              <Md text={n.body_md} />
+              <button type="button" className="btn-mini" onClick={() => toCal('newsletter', n.subject_a || o.topic, n.body_md)}>마케팅 달력에 초안으로 넣기</button>
+            </div>
+          )}
+        </Group>
+      )}
     </div>
   )
 }
