@@ -4,7 +4,7 @@ import { buildTasks, isMine } from '../../shared/work.js'
 import { daysBetween, dayLabel, fmtAgo, kst, todayStr } from '../../shared/time.js'
 import { DEPTS, AGENT_FACE, agentState } from '../org.js'
 
-/* 본사 — 알프스를 가운데 둔 나선형 조직도 + AI 팀 대기실 */
+/* 본사 — 알프스를 가운데 둔 나선형 조직도(안쪽 바퀴 3개 · 바깥 바퀴 4개) + AI 팀 대기실 */
 export default function Hq({ ctx, runs }) {
   const { data, settings } = ctx
   const today = todayStr()
@@ -29,8 +29,8 @@ export default function Hq({ ctx, runs }) {
 
   const narrow = w > 0 && w < 700
   const W = w || 900
-  const card = narrow ? { w: Math.min(170, Math.floor(W / 2) - 12), h: 100 } : { w: 196, h: 112 }
-  const geo = useMemo(() => (narrow ? helix(W, card, DEPTS.length) : spiral(W, Math.round(W * 0.62), card, DEPTS.length)), [W, narrow]) // eslint-disable-line react-hooks/exhaustive-deps
+  const card = narrow ? { w: Math.min(170, Math.floor(W / 2) - 12), h: 100 } : { w: Math.min(204, Math.round(W * 0.22)), h: 112 }
+  const geo = useMemo(() => (narrow ? helix(W, card, DEPTS.length) : spiral(W, card, DEPTS.length)), [W, narrow]) // eslint-disable-line react-hooks/exhaustive-deps
   const H = geo.H
 
   const live = DEPTS.map((d) => ({ d, s: agentState(d.agent, { settings, runs, leads: data.leads }) }))
@@ -64,7 +64,7 @@ export default function Hq({ ctx, runs }) {
           <path d={geo.path} className="spiral-base" />
           <path d={geo.path} className="spiral-flow" />
           {geo.nodes.map((p, i) => <line key={i} x1={p.sx} y1={p.sy} x2={p.x} y2={p.y} className="spoke" />)}
-          {geo.nodes.map((p, i) => <circle key={`d${i}`} cx={p.sx} cy={p.sy} r="4" className="joint" />)}
+          {!geo.radial && geo.nodes.map((p, i) => <circle key={`d${i}`} cx={p.sx} cy={p.sy} r="4" className="joint" />)}
         </svg>
 
         <div className="core" style={{ left: geo.cx, top: geo.cy }}>
@@ -112,23 +112,27 @@ export default function Hq({ ctx, runs }) {
   )
 }
 
-/** 나선 위 부서 자리 계산 (가운데 알프스에서 바깥으로 1.6바퀴) */
-function spiral(W, H, card, n) {
-  const narrow = false
+/** PC: 알프스에서 바깥으로 두 바퀴 도는 나선. 안쪽 바퀴에 3개(120° 간격), 바깥 바퀴에 4개(90° 간격, 대각선 자리) */
+function spiral(W, card, n) {
+  const H = Math.round(Math.max(800, W * 0.68))
   const cx = W / 2, cy = H / 2
   const RX = W / 2 - card.w / 2 - 6
   const RY = H / 2 - card.h / 2 - 6
-  const t0 = narrow ? 0.35 : 0.6, step = narrow ? 1.62 : 1.5
-  const rIn = narrow ? 0.5 : 0.52
-  const tMax = t0 + step * (n - 1)
-  const tIn = 5.2
-  const rAt = (t) => (t < t0 ? rIn * Math.max(0, (t - (t0 - tIn)) / tIn) ** 0.9 : rIn + (1 - rIn) * ((t - t0) / (tMax - t0)))
+  const TAU = Math.PI * 2
+  const inner = Math.min(3, n), outer = n - inner
+  // t = 위쪽(12시)에서 시계 방향으로 잰 각도. 안쪽 바퀴 0~2π, 바깥 바퀴 2π~4π
+  const ts = [
+    ...Array.from({ length: inner }, (_, i) => (TAU * i) / inner),
+    ...Array.from({ length: outer }, (_, i) => TAU + TAU / (outer * 2) + (TAU * i) / outer),
+  ]
+  const tEnd = ts[ts.length - 1]
+  const rIn = 0.36, tIn = 4.2
+  const rAt = (t) => (t < 0 ? rIn * Math.max(0, (t + tIn) / tIn) ** 0.9 : rIn + (1 - rIn) * (t / tEnd))
   const at = (t) => { const r = rAt(t); const a = t - Math.PI / 2; return [cx + RX * r * Math.cos(a), cy + RY * r * Math.sin(a)] }
   const pts = []
-  for (let t = t0 - tIn + 0.9; t <= tMax + 0.25; t += 0.04) pts.push(at(t))
+  for (let t = -tIn + 0.9; t <= tEnd + 0.3; t += 0.04) pts.push(at(t))
   const path = pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join('')
-  const nodes = Array.from({ length: n }, (_, i) => {
-    const t = t0 + step * i
+  const nodes = ts.map((t) => {
     const [sx, sy] = at(t)
     const x = Math.min(W - card.w / 2 - 4, Math.max(card.w / 2 + 4, sx))
     const y = Math.min(H - card.h / 2 - 4, Math.max(card.h / 2 + 4, sy))
