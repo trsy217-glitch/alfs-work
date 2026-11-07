@@ -40,6 +40,9 @@ export default function Hq({ ctx, runs }) {
 
   return (
     <div className="hq">
+      <section className="hq-hero" aria-label="ALFS 알프스">
+        <video src="/media/alfs-logo.mp4" autoPlay muted playsInline preload="auto" />
+      </section>
       <section className="hq-head">
         <div>
           <p className="eyebrow">ALFS HQ · {dayLabel(today)} {n.time}</p>
