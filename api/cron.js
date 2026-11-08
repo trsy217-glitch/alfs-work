@@ -5,6 +5,7 @@
 //   · 저녁 브리핑 (기본 17:00)  — 각자 오늘 한 일·남은 일·내일 일정, 대표는 팀 전체 저녁 리포트
 //     (금요일 저녁 리포트에는 주간 리포트, 말일 저녁 리포트에는 정산서를 붙임)
 //   · 화·목 09:00 마케팅 초안 — 앱에만 만들어 둠 (알림 없음)
+//   · 월요일 07:00 이후 — 지난주 주간 고객 리포트를 구글 시트로 (REPORT_SHEET_URL 이 있을 때)
 import { adminReady, db, iso, list, getSettings, agentOn, logRun, membersAll } from './_lib/admin.js'
 import { hasAI } from './_lib/ai.js'
 import { prepFor, weeklyDraft } from './_lib/agents.js'
@@ -12,6 +13,7 @@ import { loadBriefData, sendBriefing } from './_lib/brief.js'
 import { weeklyReport, monthlySettlement } from '../shared/work.js'
 import { OPEN_STAGES } from '../shared/constants.js'
 import { kst, addDays, lastDayOfMonth, weekDays } from '../shared/time.js'
+import { hasSheet, sendWeekToSheet } from './_lib/sheet.js'
 
 const hm = (s) => { const [h, m] = String(s).split(':').map(Number); return h * 60 + (m || 0) }
 
@@ -78,6 +80,22 @@ export async function runCron(now) {
     mark.marketingDate = now.date
     const n = (state.marketingN || 0)
     try { await weeklyDraft(n); mark.marketingN = n + 1; done.push('marketing') } catch (e) { console.error('draft', e.message) }
+  }
+
+  // 4) 월요일 아침 — 지난주 고객 리포트를 구글 시트로 (주 1번)
+  if (now.dow === 1 && now.hm >= 420 && hasSheet()) {
+    const lastMon = addDays(weekDays(now.date)[0], -7)
+    if (state.sheetWeek !== lastMon) {
+      mark.sheetWeek = lastMon
+      try {
+        const r = await sendWeekToSheet(lastMon, '자동 (월요일)')
+        if (r.ok) {
+          await d.collection('system').doc('reportSheet').set({ [lastMon]: { at: iso(), by: '자동', rows: r.rows } }, { merge: true })
+          await logRun('secretary', `주간 고객 리포트 → 구글 시트 · ${r.summary.label}`, `발굴 ${r.summary.scouted} · 통화 ${r.summary.calls} · 미팅 예약 ${r.summary.booked} · 미팅 ${r.summary.met} · 계약 ${r.summary.won}`, { engine: '규칙', day: now.date })
+          done.push('sheet')
+        } else { delete mark.sheetWeek; console.error('sheet', r.reason) }
+      } catch (e) { delete mark.sheetWeek; console.error('sheet', e.message) }
+    }
   }
 
   // 오래된 텔레그램 저장 대기 정리 (하루 지난 것)

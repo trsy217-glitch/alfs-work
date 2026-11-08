@@ -20,6 +20,7 @@ import {
 import { app, auth, isDemoMode } from './firebase.js'
 import { ls } from './safeStorage.js'
 import { DEFAULT_APPROVAL_LIMIT } from '../shared/constants.js'
+import { activityRow } from '../shared/report.js'
 
 const db = app ? getFirestore(app) : null
 const iso = () => new Date().toISOString()
@@ -110,7 +111,15 @@ export function watchActivity(cb, n = 300) {
   if (demo) return sub(() => cb([...load().activity].sort((a, b) => b.at.localeCompare(a.at)).slice(0, n)))
   return snap(query(collection(db, 'activity'), orderBy('at', 'desc'), limit(n)), cb)
 }
-const actRow = (lead, entry) => ({ leadId: lead.id, leadName: lead.name || '', type: entry.type, by: entry.by, at: entry.at, text: (entry.text || '').slice(0, 140), ...(entry.status ? { status: entry.status } : {}), ...(entry.amount ? { amount: entry.amount } : {}) })
+const actRow = activityRow
+
+/** 한 주 기록 (리포트 화면) — 최근 300건 목록과 따로, 그 주 것을 모두 가져옴 */
+export async function loadActivityRange(startIso, endIso) {
+  if (demo) return load().activity.filter((a) => a.at >= startIso && a.at < endIso)
+  const { getDocs } = await import('firebase/firestore')
+  const s = await getDocs(query(collection(db, 'activity'), where('at', '>=', startIso), where('at', '<', endIso), orderBy('at', 'asc'), limit(3000)))
+  return s.docs.map((d) => ({ id: d.id, ...d.data() }))
+}
 
 export async function createLead(user, data) {
   const id = newId()

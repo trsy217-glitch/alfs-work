@@ -1,8 +1,11 @@
 // POST /api/app — 앱 화면에서 부르는 에이전트 (로그인한 팀원만)
-//   status · receipt · prep · after-meeting · draft · notify
+//   status · receipt · prep · after-meeting · draft · notify · weekSheet
 import { adminReady, db, verifyUser, getSettings, agentOn, logRun } from './_lib/admin.js'
 import { hasClaude, hasGemini } from './_lib/ai.js'
 import { hasTelegram, send } from './_lib/tg.js'
+import { hasSheet, sendWeekToSheet } from './_lib/sheet.js'
+import { mondayOf } from '../shared/report.js'
+import { kst } from '../shared/time.js'
 import { readReceipt, prepFor, draftContent, notifyBooking, notifyAck, notifyContent, askApproval } from './_lib/agents.js'
 
 export default async function handler(req, res) {
@@ -18,7 +21,7 @@ export default async function handler(req, res) {
     switch (body.action) {
       case 'status': {
         const c = await db().collection('system').doc('cron').get()
-        return res.json({ claude: hasClaude(), gemini: hasGemini(), telegram: hasTelegram(), cronAt: c.exists ? c.data().lastRun : null })
+        return res.json({ claude: hasClaude(), gemini: hasGemini(), telegram: hasTelegram(), sheet: hasSheet(), cronAt: c.exists ? c.data().lastRun : null })
       }
       case 'receipt': {
         if (off('finance')) return
@@ -63,6 +66,18 @@ export default async function handler(req, res) {
           return res.json({ ok: sentNow !== false })
         }
         return res.status(400).json({ error: '알 수 없는 알림' })
+      }
+      case 'weekSheet': {
+        // 주간 고객 리포트 → 구글 시트 (대표만)
+        if (who.member.role !== 'admin') return res.status(403).json({ error: '대표만 보낼 수 있어요.' })
+        const day = /^\d{4}-\d{2}-\d{2}$/.test(String(body.week || '')) ? body.week : kst().date
+        const mon = mondayOf(day)
+        const r = await sendWeekToSheet(mon, who.member.name)
+        if (r.ok) {
+          await db().collection('system').doc('reportSheet').set({ [mon]: { at: new Date().toISOString(), by: who.member.name, rows: r.rows } }, { merge: true })
+          await logRun('secretary', `주간 고객 리포트 → 구글 시트 · ${r.summary.label}`, `발굴 ${r.summary.scouted} · 통화 ${r.summary.calls} · 미팅 예약 ${r.summary.booked} · 미팅 ${r.summary.met} · 계약 ${r.summary.won} · 기록 ${r.rows}줄`, { engine: '규칙', by: who.uid })
+        }
+        return res.json(r)
       }
       default:
         return res.status(400).json({ error: '알 수 없는 요청' })

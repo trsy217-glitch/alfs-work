@@ -34,6 +34,7 @@ export const TABS = [
   { k: 'finance', n: '정산' },
   { k: 'marketing', n: '마케팅' },
   { k: 'schedule', n: '일정' },
+  { k: 'report', n: '리포트' },
   { k: 'agents', n: 'AI 팀' },
   { k: 'team', n: '설정' },
 ]

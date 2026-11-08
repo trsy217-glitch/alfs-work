@@ -20,6 +20,7 @@ import Partners from './pages/Partners.jsx'
 import Agents from './pages/Agents.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Team from './pages/Team.jsx'
+import Report from './pages/Report.jsx'
 import './styles.css'
 
 export default function App() {
@@ -177,6 +178,7 @@ function Main({ user, me, onOut }) {
               : tab === 'finance' ? <Expenses ctx={ctx} />
                 : tab === 'marketing' ? <Marketing ctx={ctx} />
                   : tab === 'schedule' ? <Schedule ctx={ctx} />
+                    : tab === 'report' ? <Report ctx={ctx} />
                     : tab === 'agents' ? <Agents ctx={ctx} />
                       : <Team ctx={ctx} onOut={onOut} />
 

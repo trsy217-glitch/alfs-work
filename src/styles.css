@@ -683,3 +683,11 @@ a.btn-mini { text-decoration: none; }
 .hq-hero { margin: 0 0 18px; border-radius: 16px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; max-height: 62vh; }
 .hq-hero video { display: block; width: 100%; height: 100%; object-fit: cover; }
 @media (max-width: 640px) { .hq-hero { border-radius: 12px; margin-bottom: 12px; } }
+
+/* 리포트 (주간 고객 리포트) */
+.kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 560px) { .kpis-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.report-ok { color: var(--good); font-size: 13px; margin-top: 8px; }
+.tbl-report th, .tbl-report td { text-align: left; vertical-align: top; }
+.tbl-report td.nowrap { white-space: nowrap; }
+.tbl-report td.small { max-width: 280px; }

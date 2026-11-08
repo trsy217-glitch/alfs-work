@@ -3,6 +3,7 @@
 import { initializeApp, cert, getApps } from 'firebase-admin/app'
 import { getFirestore, FieldValue } from 'firebase-admin/firestore'
 import { getAuth } from 'firebase-admin/auth'
+import { activityRow } from '../../shared/report.js'
 
 let _db = null
 export function adminReady() { return Boolean(process.env.FIREBASE_SERVICE_ACCOUNT || globalThis.__ALFS_FAKE_DB) }
@@ -69,7 +70,7 @@ export async function serverAct(lead, entry, patch = {}, counters = {}) {
   const ref = d.collection('leads').doc(lead.id)
   b.update(ref, up)
   b.set(ref.collection('logs').doc(), e)
-  b.set(d.collection('activity').doc(), { leadId: lead.id, leadName: lead.name || '', type: e.type, by: e.by, at: e.at, text: (e.text || '').slice(0, 140), ...(e.status ? { status: e.status } : {}), ...(e.amount ? { amount: e.amount } : {}) })
+  b.set(d.collection('activity').doc(), activityRow(lead, e))
   await b.commit()
 }
 
